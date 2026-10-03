@@ -2,9 +2,9 @@ import streamlit as st
 import qrcode
 import io
 import secrets
-import string
 import requests
 from datetime import datetime
+
 
 # =========================================================
 # PAGE SETTINGS
@@ -16,6 +16,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
 
 # =========================================================
 # RESPONSIVE DESIGN
@@ -76,7 +77,6 @@ st.markdown("""
     .info-card {
         padding: 15px;
     }
-
 }
 
 </style>
@@ -100,6 +100,8 @@ if "activity" not in st.session_state:
 
 def create_session_code(length=6):
 
+    # Removed characters that can easily be confused:
+    # I, O, 0 and 1
     characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
     return "".join(
@@ -132,6 +134,71 @@ def create_qr(url):
     )
 
     return buffer.getvalue()
+
+
+# =========================================================
+# GOOGLE DATABASE
+# =========================================================
+
+def save_activity_to_google(activity):
+
+    payload = {
+        "action": "create_activity",
+
+        "session_id": activity["session"],
+        "course": activity["course"],
+        "semester": activity["semester"],
+        "activity_title": activity["activity_title"],
+        "question": activity["question"],
+        "instructions": activity["instructions"],
+        "created_date": activity["date"],
+        "created_time": activity["time"],
+
+        "allow_email": activity["allow_email"],
+        "allow_document": activity["allow_document"],
+        "allow_image": activity["allow_image"],
+        "allow_video": activity["allow_video"]
+    }
+
+    try:
+
+        response = requests.post(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            json=payload,
+            timeout=20
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.Timeout:
+
+        return {
+            "success": False,
+            "error": "Google connection timed out. Please try again."
+        }
+
+    except requests.exceptions.RequestException as error:
+
+        return {
+            "success": False,
+            "error": f"Google connection error: {error}"
+        }
+
+    except ValueError:
+
+        return {
+            "success": False,
+            "error": "Google returned an invalid response."
+        }
+
+    except Exception as error:
+
+        return {
+            "success": False,
+            "error": str(error)
+        }
 
 
 # =========================================================
@@ -233,9 +300,10 @@ if st.session_state.activity is None:
         "then enter your classroom question."
     )
 
-    # -----------------------------------------
+
+    # -----------------------------------------------------
     # COURSE LIST
-    # -----------------------------------------
+    # -----------------------------------------------------
 
     courses = [
 
@@ -252,6 +320,7 @@ if st.session_state.activity is None:
         "Other"
     ]
 
+
     semesters = [
 
         "Semester 1 - 2026/2027",
@@ -261,9 +330,11 @@ if st.session_state.activity is None:
         "Summer - 2026/2027"
     ]
 
+
     with st.form("activity_form"):
 
         col1, col2 = st.columns(2)
+
 
         with col1:
 
@@ -271,6 +342,7 @@ if st.session_state.activity is None:
                 "Course",
                 courses
             )
+
 
         with col2:
 
@@ -280,9 +352,9 @@ if st.session_state.activity is None:
             )
 
 
-        # -----------------------------------------
+        # -------------------------------------------------
         # OTHER COURSE
-        # -----------------------------------------
+        # -------------------------------------------------
 
         custom_course = ""
 
@@ -320,7 +392,9 @@ if st.session_state.activity is None:
             "#### Student response options"
         )
 
+
         c1, c2 = st.columns(2)
+
 
         with c1:
 
@@ -333,6 +407,7 @@ if st.session_state.activity is None:
                 "Document upload",
                 value=True
             )
+
 
         with c2:
 
@@ -366,11 +441,17 @@ if st.session_state.activity is None:
             else course
         )
 
+
+        # -------------------------------------------------
+        # VALIDATION
+        # -------------------------------------------------
+
         if not selected_course:
 
             st.error(
                 "Please enter the course title."
             )
+
 
         elif not activity_title.strip():
 
@@ -378,30 +459,52 @@ if st.session_state.activity is None:
                 "Please enter an activity title."
             )
 
+
         elif not question.strip():
 
             st.error(
                 "Please enter a question."
             )
 
+
         else:
+
+            # ---------------------------------------------
+            # AUTOMATIC DATE AND TIME
+            # ---------------------------------------------
 
             now = datetime.now()
 
+
+            # ---------------------------------------------
+            # CREATE UNIQUE SESSION
+            # ---------------------------------------------
+
             session_code = create_session_code()
 
-            app_url = st.secrets["APP_URL"]
+
+            # ---------------------------------------------
+            # CREATE STUDENT URL
+            # ---------------------------------------------
+
+            app_url = st.secrets["APP_URL"].rstrip("/")
 
             student_url = (
                 f"{app_url}/?session={session_code}"
             )
 
 
-            st.session_state.activity = {
+            # ---------------------------------------------
+            # BUILD ACTIVITY OBJECT
+            # ---------------------------------------------
 
-                "course": selected_course,
+            activity = {
 
-                "semester": semester,
+                "course":
+                    selected_course,
+
+                "semester":
+                    semester,
 
                 "activity_title":
                     activity_title.strip(),
@@ -437,7 +540,60 @@ if st.session_state.activity is None:
                     allow_video
             }
 
-            st.rerun()
+
+            # ---------------------------------------------
+            # SAVE ACTIVITY TO GOOGLE SHEETS + DRIVE
+            # ---------------------------------------------
+
+            with st.spinner(
+                "Creating activity and connecting "
+                "to Google Sheets and Drive..."
+            ):
+
+                google_result = (
+                    save_activity_to_google(
+                        activity
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # GOOGLE SAVE SUCCESSFUL
+            # ---------------------------------------------
+
+            if google_result.get("success"):
+
+                activity["drive_folder_url"] = (
+                    google_result.get(
+                        "folder_url",
+                        ""
+                    )
+                )
+
+                st.session_state.activity = (
+                    activity
+                )
+
+                st.rerun()
+
+
+            # ---------------------------------------------
+            # GOOGLE SAVE FAILED
+            # ---------------------------------------------
+
+            else:
+
+                st.error(
+                    "❌ The activity could not be "
+                    "saved to the Google database."
+                )
+
+                st.error(
+                    google_result.get(
+                        "error",
+                        "Unknown Google connection error."
+                    )
+                )
 
 
 # =========================================================
@@ -448,9 +604,11 @@ else:
 
     activity = st.session_state.activity
 
+
     st.success(
-        "Activity created successfully!"
+        "✅ Activity created and saved successfully!"
     )
+
 
     left, right = st.columns([1.5, 1])
 
@@ -464,6 +622,7 @@ else:
         st.header(
             activity["activity_title"]
         )
+
 
         st.markdown(
             f"""
@@ -497,6 +656,7 @@ else:
             "💬 Discussion Question"
         )
 
+
         st.info(
             activity["question"]
         )
@@ -513,6 +673,18 @@ else:
             )
 
 
+        # -------------------------------------------------
+        # GOOGLE DRIVE FOLDER
+        # -------------------------------------------------
+
+        if activity.get("drive_folder_url"):
+
+            st.success(
+                "☁️ Google Drive activity folder "
+                "created successfully."
+            )
+
+
     # -----------------------------------------------------
     # QR AREA
     # -----------------------------------------------------
@@ -522,6 +694,7 @@ else:
         st.subheader(
             "📱 Student Access"
         )
+
 
         st.write(
             "Students scan this QR code "
@@ -576,7 +749,9 @@ else:
         "⚙️ Activity Settings"
     )
 
+
     s1, s2, s3, s4 = st.columns(4)
+
 
     s1.metric(
         "Email",
@@ -585,6 +760,7 @@ else:
         else "Disabled"
     )
 
+
     s2.metric(
         "Documents",
         "Allowed"
@@ -592,12 +768,14 @@ else:
         else "Disabled"
     )
 
+
     s3.metric(
         "Images",
         "Allowed"
         if activity["allow_image"]
         else "Disabled"
     )
+
 
     s4.metric(
         "Videos",
@@ -609,6 +787,10 @@ else:
 
     st.divider()
 
+
+    # -----------------------------------------------------
+    # NEW ACTIVITY
+    # -----------------------------------------------------
 
     if st.button(
         "➕ Create Another Activity",
