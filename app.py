@@ -10,15 +10,24 @@ from datetime import datetime
 # =========================================================
 # PAGE SETTINGS
 # =========================================================
-from PIL import Image
-
-my_icon = Image.open("ibrahim44.gif")
-
 st.set_page_config(
     page_title="SmartClass Response",
-    page_icon=my_icon,
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="collapsed"
+)
+
+import base64
+
+with open("ibrahim44.gif", "rb") as f:
+    gif_data = base64.b64encode(f.read()).decode()
+
+st.markdown(
+    f'''
+    <img src="data:image/gif;base64,{gif_data}"
+         style="width:100px; height:200px; object-fit:contain;">
+    ''',
+    unsafe_allow_html=True
 )
 
 
