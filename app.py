@@ -416,6 +416,32 @@ def submit_student_response(
 
 
 # =========================================================
+# GOOGLE — GET STUDENT RESPONSES
+# =========================================================
+
+def get_student_responses(session_id):
+    try:
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action": "get_responses",
+                "session_id": session_id
+            },
+            timeout=20
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "Google connection timed out.", "responses": []}
+    except requests.exceptions.RequestException as error:
+        return {"success": False, "error": f"Google connection error: {error}", "responses": []}
+    except ValueError:
+        return {"success": False, "error": "Google returned an invalid response.", "responses": []}
+    except Exception as error:
+        return {"success": False, "error": str(error), "responses": []}
+
+
+# =========================================================
 # CHECK URL FOR STUDENT SESSION
 # =========================================================
 #
@@ -967,7 +993,8 @@ dashboard_page = st.radio(
 
     [
         "➕ Create Activity",
-        "📚 My Activities"
+        "📚 My Activities",
+        "📊 Student Responses"
     ],
 
     horizontal=True,
@@ -2145,4 +2172,185 @@ elif dashboard_page == "📚 My Activities":
                         drive_url,
 
                         use_container_width=True
-                    )   
+                    )
+
+# =========================================================
+# PAGE 3 — STUDENT RESPONSES
+# =========================================================
+
+elif dashboard_page == "📊 Student Responses":
+
+    st.header("📊 Student Responses")
+    st.write(
+        "Select an activity to view student answers directly inside SmartClass."
+    )
+
+    with st.spinner("Loading activities from Google..."):
+        activities_result = get_all_activities()
+
+    if not activities_result.get("success"):
+        st.error("❌ Could not load activities.")
+        st.error(activities_result.get("error", "Unknown Google error."))
+        st.stop()
+
+    activities = activities_result.get("activities", [])
+
+    if not activities:
+        st.info("No activities have been created yet.")
+        st.stop()
+
+    course_names = sorted({
+        str(item.get("course", "")).strip()
+        for item in activities
+        if str(item.get("course", "")).strip()
+    })
+
+    response_course = st.selectbox(
+        "Course",
+        course_names,
+        key="responses_course"
+    )
+
+    course_activities = [
+        item for item in activities
+        if str(item.get("course", "")).strip() == response_course
+    ]
+
+    semester_names = sorted({
+        str(item.get("semester", "")).strip()
+        for item in course_activities
+        if str(item.get("semester", "")).strip()
+    })
+
+    response_semester = st.selectbox(
+        "Semester",
+        semester_names,
+        key="responses_semester"
+    )
+
+    matching_activities = [
+        item for item in course_activities
+        if str(item.get("semester", "")).strip() == response_semester
+    ]
+
+    if not matching_activities:
+        st.info("No activities were found for this course and semester.")
+        st.stop()
+
+    activity_options = {}
+    for item in matching_activities:
+        session = str(item.get("session_id", "")).strip()
+        title = str(item.get("activity_title", "Untitled Activity")).strip()
+        date = str(item.get("created_date", "")).strip()
+        label = f"{title} — {date} — {session}"
+        activity_options[label] = item
+
+    selected_activity_label = st.selectbox(
+        "Activity",
+        list(activity_options.keys()),
+        key="responses_activity"
+    )
+
+    selected_activity = activity_options[selected_activity_label]
+    selected_session = str(selected_activity.get("session_id", "")).strip()
+
+    st.divider()
+    st.subheader(selected_activity.get("activity_title", "Classroom Activity"))
+    st.caption(
+        f"{selected_activity.get('course', '')} • "
+        f"{selected_activity.get('semester', '')} • "
+        f"Session {selected_session}"
+    )
+    st.info(selected_activity.get("question", ""))
+
+    control1, control2 = st.columns([1, 2])
+    with control1:
+        refresh = st.button(
+            "🔄 Refresh Responses",
+            use_container_width=True
+        )
+    with control2:
+        presentation_mode = st.toggle(
+            "🎥 Presentation Mode — hide student emails",
+            value=False
+        )
+
+    # The button causes a normal Streamlit rerun, so responses are fetched fresh.
+    with st.spinner("Loading student responses..."):
+        responses_result = get_student_responses(selected_session)
+
+    if not responses_result.get("success"):
+        st.error("❌ Could not load student responses.")
+        st.error(responses_result.get("error", "Unknown Google error."))
+        st.stop()
+
+    responses = responses_result.get("responses", [])
+
+    total_responses = len(responses)
+    responses_with_email = sum(
+        1 for response in responses
+        if str(response.get("student_email", "")).strip()
+    )
+    responses_with_attachment = sum(
+        1 for response in responses
+        if str(response.get("attachment_url", "")).strip()
+    )
+
+    metric1, metric2, metric3 = st.columns(3)
+    metric1.metric("Total Responses", total_responses)
+    metric2.metric(
+        "With Email",
+        "Hidden" if presentation_mode else responses_with_email
+    )
+    metric3.metric("Attachments", responses_with_attachment)
+
+    st.divider()
+
+    if not responses:
+        st.info(
+            "No student responses have been submitted for this activity yet. "
+            "Use Refresh Responses after students submit their answers."
+        )
+        st.stop()
+
+    if presentation_mode:
+        st.success(
+            "🎥 Presentation Mode is active. Student emails are hidden."
+        )
+
+    for index, response in enumerate(responses, start=1):
+        with st.container(border=True):
+            heading_col, time_col = st.columns([3, 2])
+
+            with heading_col:
+                st.markdown(f"### 💬 Response {index}")
+
+            with time_col:
+                submitted_date = str(response.get("submitted_date", "")).strip()
+                submitted_time = str(response.get("submitted_time", "")).strip()
+                submitted_label = " • ".join(
+                    part for part in [submitted_date, submitted_time] if part
+                )
+                if submitted_label:
+                    st.caption(submitted_label)
+
+            if not presentation_mode:
+                student_email = str(response.get("student_email", "")).strip()
+                if student_email:
+                    st.write(f"**Student Email:** {student_email}")
+                else:
+                    st.caption("Student email: Not provided")
+
+            answer_text = str(response.get("answer", "")).strip()
+            st.write(answer_text if answer_text else "No written answer provided.")
+
+            attachment_url = str(response.get("attachment_url", "")).strip()
+            attachment_name = str(response.get("attachment_name", "")).strip()
+
+            if attachment_url:
+                st.link_button(
+                    f"📎 Open {attachment_name or 'Attachment'}",
+                    attachment_url,
+                    key=f"attachment_{selected_session}_{index}"
+                )
+
