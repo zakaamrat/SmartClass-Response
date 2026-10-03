@@ -1,4 +1,4 @@
-import streamlit as st
+       import streamlit as st
 import qrcode
 import io
 import secrets
@@ -52,6 +52,14 @@ st.markdown("""
     margin-bottom: 15px;
 }
 
+.student-card {
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid #e6e8ec;
+    background: white;
+    margin-bottom: 18px;
+}
+
 .session-code {
     font-size: 28px;
     font-weight: 800;
@@ -68,6 +76,14 @@ st.markdown("""
     margin-bottom: 20px;
 }
 
+.student-question {
+    padding: 22px;
+    border-radius: 18px;
+    background: #f7f9fc;
+    border: 1px solid #e6e8ec;
+    margin-bottom: 20px;
+}
+
 .stButton > button {
     width: 100%;
     min-height: 48px;
@@ -81,10 +97,11 @@ st.markdown("""
         padding: 1rem;
     }
 
-    .info-card {
+    .info-card,
+    .student-card,
+    .student-question {
         padding: 15px;
     }
-
 }
 
 </style>
@@ -101,15 +118,18 @@ if "authenticated" not in st.session_state:
 if "activity" not in st.session_state:
     st.session_state.activity = None
 
+if "student_submitted" not in st.session_state:
+    st.session_state.student_submitted = False
+
+if "student_submission_session" not in st.session_state:
+    st.session_state.student_submission_session = None
+
 
 # =========================================================
-# FUNCTIONS
+# GENERAL FUNCTIONS
 # =========================================================
 
 def create_session_code(length=6):
-
-    # Avoid confusing characters such as:
-    # I, O, 0 and 1
 
     characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -118,10 +138,6 @@ def create_session_code(length=6):
         for _ in range(length)
     )
 
-
-# ---------------------------------------------------------
-# CREATE QR CODE
-# ---------------------------------------------------------
 
 def create_qr(url):
 
@@ -132,10 +148,7 @@ def create_qr(url):
     )
 
     qr.add_data(url)
-
-    qr.make(
-        fit=True
-    )
+    qr.make(fit=True)
 
     image = qr.make_image(
         fill_color="black",
@@ -153,13 +166,8 @@ def create_qr(url):
 
 
 # =========================================================
-# GOOGLE DATABASE FUNCTIONS
+# GOOGLE — SAVE ACTIVITY
 # =========================================================
-
-
-# ---------------------------------------------------------
-# SAVE NEW ACTIVITY
-# ---------------------------------------------------------
 
 def save_activity_to_google(activity):
 
@@ -205,6 +213,166 @@ def save_activity_to_google(activity):
             activity["allow_video"]
     }
 
+    try:
+
+        response = requests.post(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            json=payload,
+            timeout=20
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.Timeout:
+
+        return {
+            "success": False,
+            "error": "Google connection timed out."
+        }
+
+    except requests.exceptions.RequestException as error:
+
+        return {
+            "success": False,
+            "error": f"Google connection error: {error}"
+        }
+
+    except ValueError:
+
+        return {
+            "success": False,
+            "error": "Google returned an invalid response."
+        }
+
+    except Exception as error:
+
+        return {
+            "success": False,
+            "error": str(error)
+        }
+
+
+# =========================================================
+# GOOGLE — GET ALL ACTIVITIES
+# =========================================================
+
+def get_all_activities():
+
+    try:
+
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action": "get_activities"
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.Timeout:
+
+        return {
+            "success": False,
+            "error": "Google connection timed out.",
+            "activities": []
+        }
+
+    except Exception as error:
+
+        return {
+            "success": False,
+            "error": str(error),
+            "activities": []
+        }
+
+
+# =========================================================
+# GOOGLE — GET ONE ACTIVITY
+# =========================================================
+
+def get_activity_from_google(session_id):
+
+    try:
+
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action": "get_activity",
+                "session_id": session_id
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+    except requests.exceptions.Timeout:
+
+        return {
+            "success": False,
+            "error": "Google connection timed out."
+        }
+
+    except requests.exceptions.RequestException as error:
+
+        return {
+            "success": False,
+            "error": f"Google connection error: {error}"
+        }
+
+    except ValueError:
+
+        return {
+            "success": False,
+            "error": "Google returned an invalid response."
+        }
+
+    except Exception as error:
+
+        return {
+            "success": False,
+            "error": str(error)
+        }
+
+
+# =========================================================
+# GOOGLE — SUBMIT STUDENT RESPONSE
+# =========================================================
+
+def submit_student_response(
+    session_id,
+    student_email,
+    answer
+):
+
+    now = datetime.now()
+
+    payload = {
+
+        "action":
+            "submit_response",
+
+        "session_id":
+            session_id,
+
+        "submitted_date":
+            now.strftime("%d %B %Y"),
+
+        "submitted_time":
+            now.strftime("%I:%M %p"),
+
+        "student_email":
+            student_email.strip(),
+
+        "answer":
+            answer.strip()
+    }
 
     try:
 
@@ -218,34 +386,26 @@ def save_activity_to_google(activity):
 
         return response.json()
 
-
     except requests.exceptions.Timeout:
 
         return {
             "success": False,
-            "error":
-                "Google connection timed out. "
-                "Please try again."
+            "error": "Submission timed out. Please try again."
         }
-
 
     except requests.exceptions.RequestException as error:
 
         return {
             "success": False,
-            "error":
-                f"Google connection error: {error}"
+            "error": f"Connection error: {error}"
         }
-
 
     except ValueError:
 
         return {
             "success": False,
-            "error":
-                "Google returned an invalid response."
+            "error": "Google returned an invalid response."
         }
-
 
     except Exception as error:
 
@@ -255,45 +415,438 @@ def save_activity_to_google(activity):
         }
 
 
-# ---------------------------------------------------------
-# GET ALL ACTIVITIES
-# ---------------------------------------------------------
+# =========================================================
+# CHECK URL FOR STUDENT SESSION
+# =========================================================
+#
+# THIS MUST COME BEFORE INSTRUCTOR LOGIN.
+#
+# Example:
+#
+# https://your-app.streamlit.app/?session=ABC123
+#
+# =========================================================
 
-def get_all_activities():
+student_session_id = st.query_params.get("session")
 
-    try:
 
-        response = requests.get(
-            st.secrets["GOOGLE_SCRIPT_URL"],
-            params={
-                "action":
-                    "get_activities"
-            },
-            timeout=20
+# =========================================================
+# STUDENT MODE
+# =========================================================
+
+if student_session_id:
+
+    student_session_id = str(
+        student_session_id
+    ).strip()
+
+
+    # Reset success state if another QR/session is opened
+
+    if (
+        st.session_state.student_submission_session
+        != student_session_id
+    ):
+
+        st.session_state.student_submitted = False
+
+        st.session_state.student_submission_session = (
+            student_session_id
         )
 
-        response.raise_for_status()
 
-        return response.json()
+    # -----------------------------------------------------
+    # STUDENT HEADER
+    # -----------------------------------------------------
+
+    st.markdown(
+        """
+        <div class="main-title">
+            🎓 SmartClass Response
+        </div>
+
+        <div class="subtitle">
+            Classroom Discussion
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
-    except requests.exceptions.Timeout:
+    # -----------------------------------------------------
+    # LOAD ACTIVITY
+    # -----------------------------------------------------
 
-        return {
-            "success": False,
-            "error":
-                "Google connection timed out.",
-            "activities": []
-        }
+    with st.spinner(
+        "Loading classroom activity..."
+    ):
+
+        activity_result = (
+            get_activity_from_google(
+                student_session_id
+            )
+        )
 
 
-    except Exception as error:
+    # -----------------------------------------------------
+    # ACTIVITY NOT FOUND
+    # -----------------------------------------------------
 
-        return {
-            "success": False,
-            "error": str(error),
-            "activities": []
-        }
+    if not activity_result.get("success"):
+
+        st.error(
+            "❌ This classroom activity could not be found."
+        )
+
+        st.write(
+            "Please scan the QR code again or ask your instructor."
+        )
+
+        with st.expander(
+            "Technical information"
+        ):
+
+            st.write(
+                activity_result.get(
+                    "error",
+                    "Unknown error."
+                )
+            )
+
+        st.stop()
+
+
+    student_activity = (
+        activity_result.get(
+            "activity",
+            {}
+        )
+    )
+
+
+    # -----------------------------------------------------
+    # CHECK STATUS
+    # -----------------------------------------------------
+
+    activity_status = str(
+        student_activity.get(
+            "status",
+            "Active"
+        )
+    ).strip()
+
+
+    if activity_status.lower() != "active":
+
+        st.warning(
+            "🔒 This classroom activity is currently closed."
+        )
+
+        st.write(
+            "Please contact your instructor if you believe "
+            "the activity should still be available."
+        )
+
+        st.stop()
+
+
+    # -----------------------------------------------------
+    # COURSE INFORMATION
+    # -----------------------------------------------------
+
+    st.header(
+        student_activity.get(
+            "activity_title",
+            "Classroom Activity"
+        )
+    )
+
+
+    st.markdown(
+        f"""
+        <div class="student-card">
+
+        <b>📚 Course</b><br>
+        {student_activity.get("course", "")}
+
+        <br><br>
+
+        <b>🎓 Semester</b><br>
+        {student_activity.get("semester", "")}
+
+        <br><br>
+
+        <b>🔑 Session</b><br>
+        {student_session_id}
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+    # -----------------------------------------------------
+    # QUESTION
+    # -----------------------------------------------------
+
+    st.subheader(
+        "💬 Discussion Question"
+    )
+
+
+    st.info(
+        student_activity.get(
+            "question",
+            ""
+        )
+    )
+
+
+    # -----------------------------------------------------
+    # INSTRUCTIONS
+    # -----------------------------------------------------
+
+    instructions = str(
+        student_activity.get(
+            "instructions",
+            ""
+        )
+    ).strip()
+
+
+    if instructions:
+
+        st.write(
+            "**📌 Instructions**"
+        )
+
+        st.write(
+            instructions
+        )
+
+
+    st.divider()
+
+
+    # =====================================================
+    # SUBMISSION SUCCESS PAGE
+    # =====================================================
+
+    if st.session_state.student_submitted:
+
+        st.success(
+            "✅ Your response has been submitted successfully!"
+        )
+
+        st.markdown(
+            """
+            ### Thank you for participating
+
+            Your response has been received by your instructor.
+            """
+        )
+
+        st.info(
+            "You may now close this page."
+        )
+
+        st.stop()
+
+
+    # =====================================================
+    # STUDENT RESPONSE FORM
+    # =====================================================
+
+    st.subheader(
+        "✍️ Your Response"
+    )
+
+
+    st.write(
+        "Write your response below and press "
+        "**Submit Response** when finished."
+    )
+
+
+    with st.form(
+        "student_response_form"
+    ):
+
+
+        # -------------------------------------------------
+        # OPTIONAL EMAIL
+        # -------------------------------------------------
+
+        student_email = ""
+
+
+        allow_email = student_activity.get(
+            "allow_email",
+            False
+        )
+
+
+        if allow_email:
+
+            student_email = st.text_input(
+
+                "Email (optional)",
+
+                placeholder=
+                    "You may leave this blank"
+            )
+
+
+            st.caption(
+                "Your email is optional and will only "
+                "be visible to the instructor."
+            )
+
+
+        # -------------------------------------------------
+        # ANSWER
+        # -------------------------------------------------
+
+        answer = st.text_area(
+
+            "Your Answer",
+
+            placeholder=
+                "Write your answer, explanation or "
+                "classroom comment here...",
+
+            height=220
+        )
+
+
+        # -------------------------------------------------
+        # ATTACHMENTS — NEXT STAGE
+        # -------------------------------------------------
+
+        attachment_allowed = (
+
+            student_activity.get(
+                "allow_document",
+                False
+            )
+
+            or
+
+            student_activity.get(
+                "allow_image",
+                False
+            )
+
+            or
+
+            student_activity.get(
+                "allow_video",
+                False
+            )
+        )
+
+
+        if attachment_allowed:
+
+            st.caption(
+                "📎 Image, document and video uploads "
+                "will be enabled in the next stage."
+            )
+
+
+        # -------------------------------------------------
+        # SUBMIT BUTTON
+        # -------------------------------------------------
+
+        student_submit = (
+            st.form_submit_button(
+
+                "📤 Submit Response",
+
+                type="primary",
+
+                use_container_width=True
+            )
+        )
+
+
+    # =====================================================
+    # PROCESS STUDENT SUBMISSION
+    # =====================================================
+
+    if student_submit:
+
+
+        if not answer.strip():
+
+            st.error(
+                "Please write your answer before submitting."
+            )
+
+
+        else:
+
+            with st.spinner(
+                "Submitting your response..."
+            ):
+
+                submission_result = (
+                    submit_student_response(
+
+                        student_session_id,
+
+                        student_email,
+
+                        answer
+                    )
+                )
+
+
+            if submission_result.get(
+                "success"
+            ):
+
+                st.session_state.student_submitted = True
+
+                st.rerun()
+
+
+            else:
+
+                st.error(
+                    "❌ Your response could not be submitted."
+                )
+
+                st.error(
+                    submission_result.get(
+                        "error",
+                        "Unknown submission error."
+                    )
+                )
+
+
+    # =====================================================
+    # CRITICAL
+    # =====================================================
+    #
+    # STOP HERE.
+    #
+    # A STUDENT MUST NEVER CONTINUE TO THE
+    # INSTRUCTOR LOGIN SECTION.
+    #
+    # =====================================================
+
+    st.stop()
+
+
+# =========================================================
+# INSTRUCTOR MODE
+# =========================================================
+#
+# We reach this point ONLY when the URL does NOT contain
+# ?session=...
+#
+# =========================================================
 
 
 # =========================================================
@@ -920,7 +1473,7 @@ if dashboard_page == "➕ Create Activity":
 
             st.write(
                 "Students scan this QR code "
-                "to access this activity."
+                "to answer this activity."
             )
 
 
@@ -1340,7 +1893,7 @@ elif dashboard_page == "📚 My Activities":
         )
 
 
-        session_id = str(
+        saved_session_id = str(
             item.get(
                 "session_id",
                 ""
@@ -1353,7 +1906,7 @@ elif dashboard_page == "📚 My Activities":
         # -------------------------------------------------
 
         with st.expander(
-            f"📘 {title} — {session_id}"
+            f"📘 {title} — {saved_session_id}"
         ):
 
 
@@ -1484,7 +2037,7 @@ elif dashboard_page == "📚 My Activities":
             student_url = (
 
                 f"{app_url}/"
-                f"?session={session_id}"
+                f"?session={saved_session_id}"
             )
 
 
@@ -1534,7 +2087,7 @@ elif dashboard_page == "📚 My Activities":
 
 
                 st.code(
-                    session_id,
+                    saved_session_id,
                     language=None
                 )
 
@@ -1547,7 +2100,7 @@ elif dashboard_page == "📚 My Activities":
                         student_url,
 
                     key=
-                        f"url_{session_id}"
+                        f"url_{saved_session_id}"
                 )
 
 
@@ -1559,13 +2112,13 @@ elif dashboard_page == "📚 My Activities":
                         qr_image,
 
                     file_name=
-                        f"{session_id}_QR.png",
+                        f"{saved_session_id}_QR.png",
 
                     mime=
                         "image/png",
 
                     key=
-                        f"download_{session_id}",
+                        f"download_{saved_session_id}",
 
                     use_container_width=True
                 )
@@ -1592,4 +2145,4 @@ elif dashboard_page == "📚 My Activities":
                         drive_url,
 
                         use_container_width=True
-                    )
+                    )   
