@@ -61,6 +61,13 @@ st.markdown("""
     background: #f2f6ff;
 }
 
+.activity-count {
+    padding: 15px;
+    border-radius: 12px;
+    background: #f7f9fc;
+    margin-bottom: 20px;
+}
+
 .stButton > button {
     width: 100%;
     min-height: 48px;
@@ -77,6 +84,7 @@ st.markdown("""
     .info-card {
         padding: 15px;
     }
+
 }
 
 </style>
@@ -100,8 +108,9 @@ if "activity" not in st.session_state:
 
 def create_session_code(length=6):
 
-    # Removed characters that can easily be confused:
+    # Avoid confusing characters such as:
     # I, O, 0 and 1
+
     characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
     return "".join(
@@ -109,6 +118,10 @@ def create_session_code(length=6):
         for _ in range(length)
     )
 
+
+# ---------------------------------------------------------
+# CREATE QR CODE
+# ---------------------------------------------------------
 
 def create_qr(url):
 
@@ -119,7 +132,10 @@ def create_qr(url):
     )
 
     qr.add_data(url)
-    qr.make(fit=True)
+
+    qr.make(
+        fit=True
+    )
 
     image = qr.make_image(
         fill_color="black",
@@ -137,28 +153,58 @@ def create_qr(url):
 
 
 # =========================================================
-# GOOGLE DATABASE
+# GOOGLE DATABASE FUNCTIONS
 # =========================================================
+
+
+# ---------------------------------------------------------
+# SAVE NEW ACTIVITY
+# ---------------------------------------------------------
 
 def save_activity_to_google(activity):
 
     payload = {
-        "action": "create_activity",
 
-        "session_id": activity["session"],
-        "course": activity["course"],
-        "semester": activity["semester"],
-        "activity_title": activity["activity_title"],
-        "question": activity["question"],
-        "instructions": activity["instructions"],
-        "created_date": activity["date"],
-        "created_time": activity["time"],
+        "action":
+            "create_activity",
 
-        "allow_email": activity["allow_email"],
-        "allow_document": activity["allow_document"],
-        "allow_image": activity["allow_image"],
-        "allow_video": activity["allow_video"]
+        "session_id":
+            activity["session"],
+
+        "course":
+            activity["course"],
+
+        "semester":
+            activity["semester"],
+
+        "activity_title":
+            activity["activity_title"],
+
+        "question":
+            activity["question"],
+
+        "instructions":
+            activity["instructions"],
+
+        "created_date":
+            activity["date"],
+
+        "created_time":
+            activity["time"],
+
+        "allow_email":
+            activity["allow_email"],
+
+        "allow_document":
+            activity["allow_document"],
+
+        "allow_image":
+            activity["allow_image"],
+
+        "allow_video":
+            activity["allow_video"]
     }
+
 
     try:
 
@@ -172,32 +218,81 @@ def save_activity_to_google(activity):
 
         return response.json()
 
+
     except requests.exceptions.Timeout:
 
         return {
             "success": False,
-            "error": "Google connection timed out. Please try again."
+            "error":
+                "Google connection timed out. "
+                "Please try again."
         }
+
 
     except requests.exceptions.RequestException as error:
 
         return {
             "success": False,
-            "error": f"Google connection error: {error}"
+            "error":
+                f"Google connection error: {error}"
         }
+
 
     except ValueError:
 
         return {
             "success": False,
-            "error": "Google returned an invalid response."
+            "error":
+                "Google returned an invalid response."
         }
+
 
     except Exception as error:
 
         return {
             "success": False,
             "error": str(error)
+        }
+
+
+# ---------------------------------------------------------
+# GET ALL ACTIVITIES
+# ---------------------------------------------------------
+
+def get_all_activities():
+
+    try:
+
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action":
+                    "get_activities"
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
+
+        return response.json()
+
+
+    except requests.exceptions.Timeout:
+
+        return {
+            "success": False,
+            "error":
+                "Google connection timed out.",
+            "activities": []
+        }
+
+
+    except Exception as error:
+
+        return {
+            "success": False,
+            "error": str(error),
+            "activities": []
         }
 
 
@@ -225,31 +320,46 @@ st.markdown(
 
 if not st.session_state.authenticated:
 
-    left, middle, right = st.columns([1, 2, 1])
+    left, middle, right = st.columns(
+        [1, 2, 1]
+    )
+
 
     with middle:
 
-        st.subheader("👨‍🏫 Instructor Login")
+        st.subheader(
+            "👨‍🏫 Instructor Login"
+        )
 
         st.write(
-            "Login to create a classroom activity."
+            "Login to create and manage "
+            "classroom activities."
         )
+
 
         password = st.text_input(
             "Instructor Password",
             type="password"
         )
 
+
         if st.button(
-            "Login",
-            type="primary"
+            "🔐 Login",
+            type="primary",
+            use_container_width=True
         ):
 
-            if password == st.secrets["INSTRUCTOR_PASSWORD"]:
+            if (
+                password
+                == st.secrets[
+                    "INSTRUCTOR_PASSWORD"
+                ]
+            ):
 
                 st.session_state.authenticated = True
 
                 st.rerun()
+
 
             else:
 
@@ -257,14 +367,18 @@ if not st.session_state.authenticated:
                     "Incorrect instructor password."
                 )
 
+
     st.stop()
 
 
 # =========================================================
-# INSTRUCTOR AREA
+# INSTRUCTOR DASHBOARD HEADER
 # =========================================================
 
-top1, top2 = st.columns([5, 1])
+top1, top2 = st.columns(
+    [5, 1]
+)
+
 
 with top1:
 
@@ -272,11 +386,16 @@ with top1:
         "👨‍🏫 Instructor Dashboard"
     )
 
+
 with top2:
 
-    if st.button("Logout"):
+    if st.button(
+        "Logout",
+        use_container_width=True
+    ):
 
         st.session_state.authenticated = False
+
         st.session_state.activity = None
 
         st.rerun()
@@ -286,545 +405,1191 @@ st.divider()
 
 
 # =========================================================
-# CREATE ACTIVITY
+# DASHBOARD NAVIGATION
 # =========================================================
 
-if st.session_state.activity is None:
+dashboard_page = st.radio(
 
-    st.header(
-        "➕ Create Classroom Activity"
-    )
+    "Instructor Menu",
 
-    st.write(
-        "Select the course and semester, "
-        "then enter your classroom question."
-    )
+    [
+        "➕ Create Activity",
+        "📚 My Activities"
+    ],
 
+    horizontal=True,
 
-    # -----------------------------------------------------
-    # COURSE LIST
-    # -----------------------------------------------------
-
-    courses = [
-
-        "Computer System Internals and Linux",
-
-        "Information Security Management",
-
-        "Database Systems",
-
-        "Career Development",
-
-        "Dependable Software Engineering",
-        "Final Year Project",
-
-        "Other"
-    ]
+    label_visibility="collapsed"
+)
 
 
-    semesters = [
-
-        "Semester 1 - 2026/2027",
-
-        "Semester 2 - 2026/2027",
-
-        "Summer - 2026/2027"
-    ]
+st.divider()
 
 
-    with st.form("activity_form"):
+# =========================================================
+# PAGE 1 — CREATE ACTIVITY
+# =========================================================
 
-        col1, col2 = st.columns(2)
-
-
-        with col1:
-
-            course = st.selectbox(
-                "Course",
-                courses
-            )
-
-
-        with col2:
-
-            semester = st.selectbox(
-                "Semester",
-                semesters
-            )
-
-
-        # -------------------------------------------------
-        # OTHER COURSE
-        # -------------------------------------------------
-
-        custom_course = ""
-
-        if course == "Other":
-
-            custom_course = st.text_input(
-                "Enter Course Title"
-            )
-
-
-        activity_title = st.text_input(
-            "Activity Title",
-            placeholder=
-            "Example: Linux Security Discussion"
-        )
-
-
-        question = st.text_area(
-            "Question / Discussion Task",
-            placeholder=
-            "Enter the question students should discuss...",
-            height=160
-        )
-
-
-        instructions = st.text_area(
-            "Instructions (optional)",
-            placeholder=
-            "Example: Explain your answer and give one example.",
-            height=90
-        )
-
-
-        st.markdown(
-            "#### Student response options"
-        )
-
-
-        c1, c2 = st.columns(2)
-
-
-        with c1:
-
-            allow_email = st.checkbox(
-                "Optional student email",
-                value=True
-            )
-
-            allow_document = st.checkbox(
-                "Document upload",
-                value=True
-            )
-
-
-        with c2:
-
-            allow_image = st.checkbox(
-                "Image upload",
-                value=True
-            )
-
-            allow_video = st.checkbox(
-                "Short video upload",
-                value=False
-            )
-
-
-        submitted = st.form_submit_button(
-            "🚀 Generate Activity & QR Code",
-            type="primary",
-            use_container_width=True
-        )
+if dashboard_page == "➕ Create Activity":
 
 
     # =====================================================
-    # PROCESS FORM
+    # NEW ACTIVITY FORM
     # =====================================================
 
-    if submitted:
-
-        selected_course = (
-            custom_course.strip()
-            if course == "Other"
-            else course
-        )
-
-
-        # -------------------------------------------------
-        # VALIDATION
-        # -------------------------------------------------
-
-        if not selected_course:
-
-            st.error(
-                "Please enter the course title."
-            )
-
-
-        elif not activity_title.strip():
-
-            st.error(
-                "Please enter an activity title."
-            )
-
-
-        elif not question.strip():
-
-            st.error(
-                "Please enter a question."
-            )
-
-
-        else:
-
-            # ---------------------------------------------
-            # AUTOMATIC DATE AND TIME
-            # ---------------------------------------------
-
-            now = datetime.now()
-
-
-            # ---------------------------------------------
-            # CREATE UNIQUE SESSION
-            # ---------------------------------------------
-
-            session_code = create_session_code()
-
-
-            # ---------------------------------------------
-            # CREATE STUDENT URL
-            # ---------------------------------------------
-
-            app_url = st.secrets["APP_URL"].rstrip("/")
-
-            student_url = (
-                f"{app_url}/?session={session_code}"
-            )
-
-
-            # ---------------------------------------------
-            # BUILD ACTIVITY OBJECT
-            # ---------------------------------------------
-
-            activity = {
-
-                "course":
-                    selected_course,
-
-                "semester":
-                    semester,
-
-                "activity_title":
-                    activity_title.strip(),
-
-                "question":
-                    question.strip(),
-
-                "instructions":
-                    instructions.strip(),
-
-                "date":
-                    now.strftime("%d %B %Y"),
-
-                "time":
-                    now.strftime("%I:%M %p"),
-
-                "session":
-                    session_code,
-
-                "student_url":
-                    student_url,
-
-                "allow_email":
-                    allow_email,
-
-                "allow_document":
-                    allow_document,
-
-                "allow_image":
-                    allow_image,
-
-                "allow_video":
-                    allow_video
-            }
-
-
-            # ---------------------------------------------
-            # SAVE ACTIVITY TO GOOGLE SHEETS + DRIVE
-            # ---------------------------------------------
-
-            with st.spinner(
-                "Creating activity and connecting "
-                "to Google Sheets and Drive..."
-            ):
-
-                google_result = (
-                    save_activity_to_google(
-                        activity
-                    )
-                )
-# =========================================================
-# LOAD ALL ACTIVITIES FROM GOOGLE
-# =========================================================
-
-def get_all_activities():
-
-    try:
-
-        response = requests.get(
-            st.secrets["GOOGLE_SCRIPT_URL"],
-            params={
-                "action": "get_activities"
-            },
-            timeout=20
-        )
-
-        response.raise_for_status()
-
-        result = response.json()
-
-        return result
-
-    except Exception as error:
-
-        return {
-            "success": False,
-            "error": str(error),
-            "activities": []
-        }
-            # ---------------------------------------------
-            # GOOGLE SAVE SUCCESSFUL
-            # ---------------------------------------------
-
-            if google_result.get("success"):
-
-                activity["drive_folder_url"] = (
-                    google_result.get(
-                        "folder_url",
-                        ""
-                    )
-                )
-
-                st.session_state.activity = (
-                    activity
-                )
-
-                st.rerun()
-
-
-            # ---------------------------------------------
-            # GOOGLE SAVE FAILED
-            # ---------------------------------------------
-
-            else:
-
-                st.error(
-                    "❌ The activity could not be "
-                    "saved to the Google database."
-                )
-
-                st.error(
-                    google_result.get(
-                        "error",
-                        "Unknown Google connection error."
-                    )
-                )
-
-
-# =========================================================
-# SHOW CREATED ACTIVITY
-# =========================================================
-
-else:
-
-    activity = st.session_state.activity
-
-
-    st.success(
-        "✅ Activity created and saved successfully!"
-    )
-
-
-    left, right = st.columns([1.5, 1])
-
-
-    # -----------------------------------------------------
-    # ACTIVITY DETAILS
-    # -----------------------------------------------------
-
-    with left:
+    if st.session_state.activity is None:
 
         st.header(
-            activity["activity_title"]
-        )
-
-
-        st.markdown(
-            f"""
-            <div class="info-card">
-
-            <b>📚 Course</b><br>
-            {activity["course"]}
-
-            <br><br>
-
-            <b>🎓 Semester</b><br>
-            {activity["semester"]}
-
-            <br><br>
-
-            <b>📅 Date</b><br>
-            {activity["date"]}
-
-            <br><br>
-
-            <b>⏰ Time</b><br>
-            {activity["time"]}
-
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-        st.subheader(
-            "💬 Discussion Question"
-        )
-
-
-        st.info(
-            activity["question"]
-        )
-
-
-        if activity["instructions"]:
-
-            st.write(
-                "**Instructions:**"
-            )
-
-            st.write(
-                activity["instructions"]
-            )
-
-
-        # -------------------------------------------------
-        # GOOGLE DRIVE FOLDER
-        # -------------------------------------------------
-
-        if activity.get("drive_folder_url"):
-
-            st.success(
-                "☁️ Google Drive activity folder "
-                "created successfully."
-            )
-
-
-    # -----------------------------------------------------
-    # QR AREA
-    # -----------------------------------------------------
-
-    with right:
-
-        st.subheader(
-            "📱 Student Access"
+            "➕ Create Classroom Activity"
         )
 
 
         st.write(
-            "Students scan this QR code "
-            "to access this activity."
+            "Select the course and semester, "
+            "then enter your classroom question."
         )
 
 
-        st.markdown(
-            f"""
-            <div class="session-code">
-                {activity["session"]}
-            </div>
-            """,
-            unsafe_allow_html=True
+        # -------------------------------------------------
+        # COURSE LIST
+        # -------------------------------------------------
+
+        courses = [
+
+            "Computer System Internals and Linux",
+
+            "Information Security Management",
+
+            "Database Systems",
+
+            "Career Development",
+
+            "Dependable Software Engineering",
+
+            "Final Year Project",
+
+            "Other"
+        ]
+
+
+        semesters = [
+
+            "Semester 1 - 2026/2027",
+
+            "Semester 2 - 2026/2027",
+
+            "Summer - 2026/2027"
+        ]
+
+
+        # -------------------------------------------------
+        # ACTIVITY FORM
+        # -------------------------------------------------
+
+        with st.form(
+            "activity_form"
+        ):
+
+
+            col1, col2 = st.columns(2)
+
+
+            with col1:
+
+                course = st.selectbox(
+                    "Course",
+                    courses
+                )
+
+
+            with col2:
+
+                semester = st.selectbox(
+                    "Semester",
+                    semesters
+                )
+
+
+            # ---------------------------------------------
+            # CUSTOM COURSE
+            # ---------------------------------------------
+
+            custom_course = ""
+
+
+            if course == "Other":
+
+                custom_course = st.text_input(
+                    "Enter Course Title"
+                )
+
+
+            # ---------------------------------------------
+            # ACTIVITY TITLE
+            # ---------------------------------------------
+
+            activity_title = st.text_input(
+
+                "Activity Title",
+
+                placeholder=
+                    "Example: Linux Security Discussion"
+            )
+
+
+            # ---------------------------------------------
+            # QUESTION
+            # ---------------------------------------------
+
+            question = st.text_area(
+
+                "Question / Discussion Task",
+
+                placeholder=
+                    "Enter the question students "
+                    "should discuss...",
+
+                height=160
+            )
+
+
+            # ---------------------------------------------
+            # INSTRUCTIONS
+            # ---------------------------------------------
+
+            instructions = st.text_area(
+
+                "Instructions (optional)",
+
+                placeholder=
+                    "Example: Explain your answer "
+                    "and give one example.",
+
+                height=90
+            )
+
+
+            st.markdown(
+                "#### Student Response Options"
+            )
+
+
+            option1, option2 = st.columns(2)
+
+
+            with option1:
+
+                allow_email = st.checkbox(
+                    "Optional student email",
+                    value=True
+                )
+
+                allow_document = st.checkbox(
+                    "Document upload",
+                    value=True
+                )
+
+
+            with option2:
+
+                allow_image = st.checkbox(
+                    "Image upload",
+                    value=True
+                )
+
+                allow_video = st.checkbox(
+                    "Short video upload",
+                    value=False
+                )
+
+
+            submitted = st.form_submit_button(
+
+                "🚀 Generate Activity & QR Code",
+
+                type="primary",
+
+                use_container_width=True
+            )
+
+
+        # =================================================
+        # PROCESS NEW ACTIVITY
+        # =================================================
+
+        if submitted:
+
+
+            selected_course = (
+
+                custom_course.strip()
+
+                if course == "Other"
+
+                else course
+            )
+
+
+            # ---------------------------------------------
+            # VALIDATION
+            # ---------------------------------------------
+
+            if not selected_course:
+
+                st.error(
+                    "Please enter the course title."
+                )
+
+
+            elif not activity_title.strip():
+
+                st.error(
+                    "Please enter an activity title."
+                )
+
+
+            elif not question.strip():
+
+                st.error(
+                    "Please enter a question."
+                )
+
+
+            else:
+
+
+                # -----------------------------------------
+                # DATE & TIME
+                # -----------------------------------------
+
+                now = datetime.now()
+
+
+                # -----------------------------------------
+                # UNIQUE SESSION
+                # -----------------------------------------
+
+                session_code = (
+                    create_session_code()
+                )
+
+
+                # -----------------------------------------
+                # STUDENT URL
+                # -----------------------------------------
+
+                app_url = (
+                    st.secrets["APP_URL"]
+                    .rstrip("/")
+                )
+
+
+                student_url = (
+
+                    f"{app_url}/"
+                    f"?session={session_code}"
+                )
+
+
+                # -----------------------------------------
+                # ACTIVITY DATA
+                # -----------------------------------------
+
+                activity = {
+
+                    "course":
+                        selected_course,
+
+                    "semester":
+                        semester,
+
+                    "activity_title":
+                        activity_title.strip(),
+
+                    "question":
+                        question.strip(),
+
+                    "instructions":
+                        instructions.strip(),
+
+                    "date":
+                        now.strftime(
+                            "%d %B %Y"
+                        ),
+
+                    "time":
+                        now.strftime(
+                            "%I:%M %p"
+                        ),
+
+                    "session":
+                        session_code,
+
+                    "student_url":
+                        student_url,
+
+                    "allow_email":
+                        allow_email,
+
+                    "allow_document":
+                        allow_document,
+
+                    "allow_image":
+                        allow_image,
+
+                    "allow_video":
+                        allow_video
+                }
+
+
+                # -----------------------------------------
+                # SAVE TO GOOGLE
+                # -----------------------------------------
+
+                with st.spinner(
+                    "Creating activity and saving "
+                    "to Google Sheets and Drive..."
+                ):
+
+                    google_result = (
+                        save_activity_to_google(
+                            activity
+                        )
+                    )
+
+
+                # -----------------------------------------
+                # SUCCESS
+                # -----------------------------------------
+
+                if google_result.get(
+                    "success"
+                ):
+
+                    activity[
+                        "drive_folder_url"
+                    ] = google_result.get(
+                        "folder_url",
+                        ""
+                    )
+
+
+                    st.session_state.activity = (
+                        activity
+                    )
+
+
+                    st.rerun()
+
+
+                # -----------------------------------------
+                # FAILURE
+                # -----------------------------------------
+
+                else:
+
+                    st.error(
+                        "❌ The activity could not "
+                        "be saved to Google."
+                    )
+
+
+                    st.error(
+                        google_result.get(
+                            "error",
+                            "Unknown Google error."
+                        )
+                    )
+
+
+    # =====================================================
+    # SHOW JUST-CREATED ACTIVITY
+    # =====================================================
+
+    else:
+
+        activity = (
+            st.session_state.activity
         )
 
 
-        qr_image = create_qr(
-            activity["student_url"]
+        st.success(
+            "✅ Activity created and saved successfully!"
         )
 
 
-        st.image(
-            qr_image,
-            width=280
+        left, right = st.columns(
+            [1.5, 1]
         )
 
 
-        st.caption(
-            activity["student_url"]
+        # -------------------------------------------------
+        # ACTIVITY INFORMATION
+        # -------------------------------------------------
+
+        with left:
+
+
+            st.header(
+                activity[
+                    "activity_title"
+                ]
+            )
+
+
+            st.markdown(
+                f"""
+                <div class="info-card">
+
+                <b>📚 Course</b><br>
+                {activity["course"]}
+
+                <br><br>
+
+                <b>🎓 Semester</b><br>
+                {activity["semester"]}
+
+                <br><br>
+
+                <b>📅 Date</b><br>
+                {activity["date"]}
+
+                <br><br>
+
+                <b>⏰ Time</b><br>
+                {activity["time"]}
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+            st.subheader(
+                "💬 Discussion Question"
+            )
+
+
+            st.info(
+                activity["question"]
+            )
+
+
+            if activity["instructions"]:
+
+                st.write(
+                    "**Instructions:**"
+                )
+
+                st.write(
+                    activity[
+                        "instructions"
+                    ]
+                )
+
+
+            if activity.get(
+                "drive_folder_url"
+            ):
+
+                st.success(
+                    "☁️ Google Drive activity "
+                    "folder created successfully."
+                )
+
+
+                st.link_button(
+                    "📁 Open Google Drive Folder",
+                    activity[
+                        "drive_folder_url"
+                    ]
+                )
+
+
+        # -------------------------------------------------
+        # QR CODE
+        # -------------------------------------------------
+
+        with right:
+
+
+            st.subheader(
+                "📱 Student Access"
+            )
+
+
+            st.write(
+                "Students scan this QR code "
+                "to access this activity."
+            )
+
+
+            st.markdown(
+                f"""
+                <div class="session-code">
+                    {activity["session"]}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+            qr_image = create_qr(
+                activity[
+                    "student_url"
+                ]
+            )
+
+
+            st.image(
+                qr_image,
+                width=280
+            )
+
+
+            st.caption(
+                activity[
+                    "student_url"
+                ]
+            )
+
+
+            st.download_button(
+
+                "⬇️ Download QR Code",
+
+                data=qr_image,
+
+                file_name=
+                    f"{activity['session']}_QR.png",
+
+                mime="image/png",
+
+                use_container_width=True
+            )
+
+
+        # -------------------------------------------------
+        # RESPONSE SETTINGS
+        # -------------------------------------------------
+
+        st.divider()
+
+
+        st.subheader(
+            "⚙️ Activity Settings"
         )
 
 
-        st.download_button(
-            "⬇️ Download QR Code",
-            qr_image,
-            file_name=
-            f"{activity['session']}_QR.png",
-            mime="image/png",
-            use_container_width=True
+        s1, s2, s3, s4 = (
+            st.columns(4)
         )
 
 
-    st.divider()
+        s1.metric(
+            "Email",
+            "Optional"
+            if activity[
+                "allow_email"
+            ]
+            else "Disabled"
+        )
+
+
+        s2.metric(
+            "Documents",
+            "Allowed"
+            if activity[
+                "allow_document"
+            ]
+            else "Disabled"
+        )
+
+
+        s3.metric(
+            "Images",
+            "Allowed"
+            if activity[
+                "allow_image"
+            ]
+            else "Disabled"
+        )
+
+
+        s4.metric(
+            "Videos",
+            "Allowed"
+            if activity[
+                "allow_video"
+            ]
+            else "Disabled"
+        )
+
+
+        st.divider()
+
+
+        if st.button(
+            "➕ Create Another Activity",
+            type="primary"
+        ):
+
+            st.session_state.activity = None
+
+            st.rerun()
+
+
+# =========================================================
+# PAGE 2 — MY ACTIVITIES
+# =========================================================
+
+elif dashboard_page == "📚 My Activities":
+
+
+    st.header(
+        "📚 My Activities"
+    )
+
+
+    st.write(
+        "Find previous classroom activities, "
+        "display their QR codes and share "
+        "them with your students."
+    )
 
 
     # -----------------------------------------------------
-    # RESPONSE SETTINGS
+    # LOAD GOOGLE DATA
     # -----------------------------------------------------
 
-    st.subheader(
-        "⚙️ Activity Settings"
-    )
-
-
-    s1, s2, s3, s4 = st.columns(4)
-
-
-    s1.metric(
-        "Email",
-        "Optional"
-        if activity["allow_email"]
-        else "Disabled"
-    )
-
-
-    s2.metric(
-        "Documents",
-        "Allowed"
-        if activity["allow_document"]
-        else "Disabled"
-    )
-
-
-    s3.metric(
-        "Images",
-        "Allowed"
-        if activity["allow_image"]
-        else "Disabled"
-    )
-
-
-    s4.metric(
-        "Videos",
-        "Allowed"
-        if activity["allow_video"]
-        else "Disabled"
-    )
-
-
-    st.divider()
-
-
-    # -----------------------------------------------------
-    # NEW ACTIVITY
-    # -----------------------------------------------------
-
-    if st.button(
-        "➕ Create Another Activity",
-        type="primary"
+    with st.spinner(
+        "Loading activities from Google..."
     ):
 
-        st.session_state.activity = None
+        result = get_all_activities()
 
-        st.rerun()
+
+    # -----------------------------------------------------
+    # LOAD ERROR
+    # -----------------------------------------------------
+
+    if not result.get(
+        "success"
+    ):
+
+        st.error(
+            "❌ Could not load activities."
+        )
+
+        st.error(
+            result.get(
+                "error",
+                "Unknown Google error."
+            )
+        )
+
+        st.stop()
+
+
+    activities = result.get(
+        "activities",
+        []
+    )
+
+
+    # -----------------------------------------------------
+    # NO ACTIVITIES
+    # -----------------------------------------------------
+
+    if not activities:
+
+        st.info(
+            "No activities have been created yet."
+        )
+
+        st.stop()
+
+
+    # =====================================================
+    # FILTERS
+    # =====================================================
+
+    st.subheader(
+        "🔎 Find an Activity"
+    )
+
+
+    course_names = sorted(
+
+        list(
+
+            set(
+
+                str(
+                    activity.get(
+                        "course",
+                        ""
+                    )
+                )
+
+                for activity
+                in activities
+
+                if activity.get(
+                    "course"
+                )
+            )
+        )
+    )
+
+
+    semester_names = sorted(
+
+        list(
+
+            set(
+
+                str(
+                    activity.get(
+                        "semester",
+                        ""
+                    )
+                )
+
+                for activity
+                in activities
+
+                if activity.get(
+                    "semester"
+                )
+            )
+        )
+    )
+
+
+    filter1, filter2 = (
+        st.columns(2)
+    )
+
+
+    with filter1:
+
+        selected_course_filter = (
+            st.selectbox(
+
+                "Course",
+
+                ["All Courses"]
+                + course_names
+            )
+        )
+
+
+    with filter2:
+
+        selected_semester_filter = (
+            st.selectbox(
+
+                "Semester",
+
+                ["All Semesters"]
+                + semester_names
+            )
+        )
+
+
+    search_text = st.text_input(
+
+        "Search",
+
+        placeholder=
+            "Search activity title, "
+            "question or session code..."
+    )
+
+
+    # =====================================================
+    # APPLY FILTERS
+    # =====================================================
+
+    filtered_activities = []
+
+
+    for item in activities:
+
+
+        course_match = (
+
+            selected_course_filter
+            == "All Courses"
+
+            or str(
+                item.get(
+                    "course",
+                    ""
+                )
+            )
+            == selected_course_filter
+        )
+
+
+        semester_match = (
+
+            selected_semester_filter
+            == "All Semesters"
+
+            or str(
+                item.get(
+                    "semester",
+                    ""
+                )
+            )
+            == selected_semester_filter
+        )
+
+
+        searchable_text = (
+
+            str(
+                item.get(
+                    "activity_title",
+                    ""
+                )
+            )
+
+            + " "
+
+            + str(
+                item.get(
+                    "question",
+                    ""
+                )
+            )
+
+            + " "
+
+            + str(
+                item.get(
+                    "session_id",
+                    ""
+                )
+            )
+
+        ).lower()
+
+
+        search_match = (
+
+            not search_text
+
+            or search_text.lower()
+            in searchable_text
+        )
+
+
+        if (
+            course_match
+            and semester_match
+            and search_match
+        ):
+
+            filtered_activities.append(
+                item
+            )
+
+
+    # =====================================================
+    # ACTIVITY COUNT
+    # =====================================================
+
+    st.markdown(
+        f"""
+        <div class="activity-count">
+
+        <b>
+        {len(filtered_activities)}
+        activity/activities found
+        </b>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+    # =====================================================
+    # DISPLAY ACTIVITIES
+    # =====================================================
+
+    if not filtered_activities:
+
+        st.warning(
+            "No activities match "
+            "the selected filters."
+        )
+
+
+    for item in filtered_activities:
+
+
+        title = str(
+            item.get(
+                "activity_title",
+                "Untitled Activity"
+            )
+        )
+
+
+        session_id = str(
+            item.get(
+                "session_id",
+                ""
+            )
+        )
+
+
+        # -------------------------------------------------
+        # ACTIVITY EXPANDER
+        # -------------------------------------------------
+
+        with st.expander(
+            f"📘 {title} — {session_id}"
+        ):
+
+
+            info1, info2, info3 = (
+                st.columns(3)
+            )
+
+
+            # ---------------------------------------------
+            # COURSE
+            # ---------------------------------------------
+
+            with info1:
+
+                st.write(
+                    "**📚 Course**"
+                )
+
+                st.write(
+                    item.get(
+                        "course",
+                        ""
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # SEMESTER
+            # ---------------------------------------------
+
+            with info2:
+
+                st.write(
+                    "**🎓 Semester**"
+                )
+
+                st.write(
+                    item.get(
+                        "semester",
+                        ""
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # DATE
+            # ---------------------------------------------
+
+            with info3:
+
+                st.write(
+                    "**📅 Date**"
+                )
+
+                st.write(
+                    item.get(
+                        "created_date",
+                        ""
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # QUESTION
+            # ---------------------------------------------
+
+            st.write(
+                "**💬 Question**"
+            )
+
+
+            st.info(
+                item.get(
+                    "question",
+                    ""
+                )
+            )
+
+
+            # ---------------------------------------------
+            # INSTRUCTIONS
+            # ---------------------------------------------
+
+            if item.get(
+                "instructions"
+            ):
+
+                st.write(
+                    "**Instructions:**"
+                )
+
+                st.write(
+                    item.get(
+                        "instructions"
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # STATUS
+            # ---------------------------------------------
+
+            status = str(
+                item.get(
+                    "status",
+                    "Active"
+                )
+            )
+
+
+            st.write(
+                f"**Status:** {status}"
+            )
+
+
+            # ---------------------------------------------
+            # BUILD STUDENT URL
+            # ---------------------------------------------
+
+            app_url = (
+                st.secrets[
+                    "APP_URL"
+                ]
+                .rstrip("/")
+            )
+
+
+            student_url = (
+
+                f"{app_url}/"
+                f"?session={session_id}"
+            )
+
+
+            # ---------------------------------------------
+            # GENERATE QR
+            # ---------------------------------------------
+
+            qr_image = create_qr(
+                student_url
+            )
+
+
+            qr_col, access_col = (
+                st.columns(
+                    [1, 2]
+                )
+            )
+
+
+            # ---------------------------------------------
+            # QR DISPLAY
+            # ---------------------------------------------
+
+            with qr_col:
+
+                st.image(
+                    qr_image,
+                    width=230
+                )
+
+
+            # ---------------------------------------------
+            # STUDENT ACCESS
+            # ---------------------------------------------
+
+            with access_col:
+
+
+                st.markdown(
+                    "### 📱 Student Access"
+                )
+
+
+                st.write(
+                    "**Session Code:**"
+                )
+
+
+                st.code(
+                    session_id,
+                    language=None
+                )
+
+
+                st.text_input(
+
+                    "Student Link",
+
+                    value=
+                        student_url,
+
+                    key=
+                        f"url_{session_id}"
+                )
+
+
+                st.download_button(
+
+                    "⬇️ Download QR Code",
+
+                    data=
+                        qr_image,
+
+                    file_name=
+                        f"{session_id}_QR.png",
+
+                    mime=
+                        "image/png",
+
+                    key=
+                        f"download_{session_id}",
+
+                    use_container_width=True
+                )
+
+
+                # -----------------------------------------
+                # GOOGLE DRIVE
+                # -----------------------------------------
+
+                drive_url = str(
+                    item.get(
+                        "drive_folder_url",
+                        ""
+                    )
+                )
+
+
+                if drive_url:
+
+                    st.link_button(
+
+                        "📁 Open Google Drive Folder",
+
+                        drive_url,
+
+                        use_container_width=True
+                    )
