@@ -1,4 +1,4 @@
-       import streamlit as st
+import streamlit as st
 import qrcode
 import io
 import secrets
