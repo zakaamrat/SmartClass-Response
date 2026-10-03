@@ -23,10 +23,20 @@ with open("ibrahim44.gif", "rb") as f:
     gif_data = base64.b64encode(f.read()).decode()
 
 st.markdown(
-    f'''
-    <img src="data:image/gif;base64,{gif_data}"
-         style="width:100px; height:200px; object-fit:contain;">
-    ''',
+    f"""
+    <div style="
+        display:flex;
+        align-items:center;
+        gap:10px;
+    ">
+        <span style="font-size:45px;">🎓</span>
+
+        <img src="data:image/gif;base64,{gif_data}"
+             style="width:70px;
+                    height:100px;
+                    object-fit:contain;">
+    </div>
+    """,
     unsafe_allow_html=True
 )
 
