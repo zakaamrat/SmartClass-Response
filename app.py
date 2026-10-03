@@ -3,6 +3,7 @@ import qrcode
 import io
 import secrets
 import string
+import requests
 from datetime import datetime
 
 # =========================================================
