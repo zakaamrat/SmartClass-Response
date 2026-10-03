@@ -19,11 +19,11 @@ st.set_page_config(
 )
 import base64
 
-with open("ibrahim44.gif", "rb") as f:
-    gif_data = base64.b64encode(f.read()).decode()
-
 st.markdown(
-    f'<img src="data:image/gif;base64,{gif_data}" width="150">',
+    f'''
+    <img src="data:image/gif;base64,{gif_data}"
+         style="width:100px; height:200px; object-fit:contain;">
+    ''',
     unsafe_allow_html=True
 )
 
