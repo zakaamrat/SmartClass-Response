@@ -3,6 +3,7 @@ import qrcode
 import io
 import secrets
 import requests
+import base64
 from datetime import datetime
 
 
@@ -348,71 +349,72 @@ def get_activity_from_google(session_id):
 def submit_student_response(
     session_id,
     student_email,
-    answer
+    answer,
+    attachments=None
 ):
 
     now = datetime.now()
+    attachments = attachments or []
 
     payload = {
-
-        "action":
-            "submit_response",
-
-        "session_id":
-            session_id,
-
-        "submitted_date":
-            now.strftime("%d %B %Y"),
-
-        "submitted_time":
-            now.strftime("%I:%M %p"),
-
-        "student_email":
-            student_email.strip(),
-
-        "answer":
-            answer.strip()
+        "action": "submit_response",
+        "session_id": session_id,
+        "submitted_date": now.strftime("%d %B %Y"),
+        "submitted_time": now.strftime("%I:%M %p"),
+        "student_email": student_email.strip(),
+        "answer": answer.strip(),
+        "attachments": attachments
     }
 
     try:
-
+        # Base64 makes the JSON request larger than the original file bytes,
+        # so uploads are given a longer timeout than text-only responses.
         response = requests.post(
             st.secrets["GOOGLE_SCRIPT_URL"],
             json=payload,
-            timeout=20
+            timeout=60
         )
-
         response.raise_for_status()
-
         return response.json()
 
     except requests.exceptions.Timeout:
-
         return {
             "success": False,
-            "error": "Submission timed out. Please try again."
+            "error": "Submission timed out. Please try again with smaller files."
         }
-
     except requests.exceptions.RequestException as error:
-
         return {
             "success": False,
             "error": f"Connection error: {error}"
         }
-
     except ValueError:
-
         return {
             "success": False,
             "error": "Google returned an invalid response."
         }
-
     except Exception as error:
-
         return {
             "success": False,
             "error": str(error)
         }
+
+
+def uploaded_file_to_attachment(uploaded_file, category):
+    """Convert one Streamlit UploadedFile to the JSON format expected by Apps Script."""
+    file_bytes = uploaded_file.getvalue()
+    return {
+        "category": category,
+        "name": uploaded_file.name,
+        "mime_type": uploaded_file.type or "application/octet-stream",
+        "base64": base64.b64encode(file_bytes).decode("utf-8")
+    }
+
+
+def setting_enabled(value):
+    """Handle either real booleans or TRUE/FALSE values returned by Google Sheets."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes"}
 
 
 # =========================================================
@@ -746,37 +748,54 @@ if student_session_id:
 
 
         # -------------------------------------------------
-        # ATTACHMENTS — NEXT STAGE
+        # OPTIONAL ATTACHMENTS
         # -------------------------------------------------
 
-        attachment_allowed = (
-
-            student_activity.get(
-                "allow_document",
-                False
-            )
-
-            or
-
-            student_activity.get(
-                "allow_image",
-                False
-            )
-
-            or
-
-            student_activity.get(
-                "allow_video",
-                False
-            )
+        allow_document = setting_enabled(
+            student_activity.get("allow_document", False)
+        )
+        allow_image = setting_enabled(
+            student_activity.get("allow_image", False)
+        )
+        allow_video = setting_enabled(
+            student_activity.get("allow_video", False)
         )
 
+        document_files = []
+        image_files = []
+        video_files = []
 
-        if attachment_allowed:
-
+        if allow_document or allow_image or allow_video:
+            st.markdown("**📎 Attachments (optional)**")
             st.caption(
-                "📎 Image, document and video uploads "
-                "will be enabled in the next stage."
+                "You can attach up to 5 files in total. "
+                "Documents/images: max 5 MB each; short videos: max 8 MB; "
+                "combined maximum: 12 MB."
+            )
+
+        if allow_document:
+            document_files = st.file_uploader(
+                "📄 Upload Document",
+                type=["pdf", "doc", "docx", "ppt", "pptx",
+                      "xls", "xlsx", "txt", "csv"],
+                accept_multiple_files=True,
+                key=f"student_documents_{student_session_id}"
+            )
+
+        if allow_image:
+            image_files = st.file_uploader(
+                "🖼️ Upload Image",
+                type=["jpg", "jpeg", "png", "webp"],
+                accept_multiple_files=True,
+                key=f"student_images_{student_session_id}"
+            )
+
+        if allow_video:
+            video_files = st.file_uploader(
+                "🎥 Upload Short Video",
+                type=["mp4", "mov", "webm"],
+                accept_multiple_files=True,
+                key=f"student_videos_{student_session_id}"
             )
 
 
@@ -812,18 +831,55 @@ if student_session_id:
 
         else:
 
+            selected_files = (
+                [(f, "document") for f in document_files]
+                + [(f, "image") for f in image_files]
+                + [(f, "video") for f in video_files]
+            )
+
+            if len(selected_files) > 5:
+                st.error("Please upload a maximum of 5 attachments in total.")
+                st.stop()
+
+            attachments = []
+            total_bytes = 0
+            upload_error = None
+
+            for uploaded_file, category in selected_files:
+                file_size = len(uploaded_file.getvalue())
+                total_bytes += file_size
+
+                if category in {"document", "image"} and file_size > 5 * 1024 * 1024:
+                    upload_error = f"{uploaded_file.name} is larger than 5 MB."
+                    break
+
+                if category == "video" and file_size > 8 * 1024 * 1024:
+                    upload_error = f"{uploaded_file.name} is larger than 8 MB."
+                    break
+
+                attachments.append(
+                    uploaded_file_to_attachment(uploaded_file, category)
+                )
+
+            if not upload_error and total_bytes > 12 * 1024 * 1024:
+                upload_error = "The combined attachment size is larger than 12 MB."
+
+            if upload_error:
+                st.error(upload_error)
+                st.stop()
+
             with st.spinner(
+                "Uploading files and submitting your response..."
+                if attachments else
                 "Submitting your response..."
             ):
 
                 submission_result = (
                     submit_student_response(
-
                         student_session_id,
-
                         student_email,
-
-                        answer
+                        answer,
+                        attachments
                     )
                 )
 
@@ -2292,8 +2348,10 @@ elif dashboard_page == "📊 Student Responses":
         if str(response.get("student_email", "")).strip()
     )
     responses_with_attachment = sum(
-        1 for response in responses
-        if str(response.get("attachment_url", "")).strip()
+        len(response.get("attachments", []) or [])
+        if response.get("attachments")
+        else (1 if str(response.get("attachment_url", "")).strip() else 0)
+        for response in responses
     )
 
     metric1, metric2, metric3 = st.columns(3)
@@ -2344,13 +2402,41 @@ elif dashboard_page == "📊 Student Responses":
             answer_text = str(response.get("answer", "")).strip()
             st.write(answer_text if answer_text else "No written answer provided.")
 
-            attachment_url = str(response.get("attachment_url", "")).strip()
-            attachment_name = str(response.get("attachment_name", "")).strip()
+            attachments = response.get("attachments", []) or []
 
-            if attachment_url:
-                st.link_button(
-                    f"📎 Open {attachment_name or 'Attachment'}",
-                    attachment_url,
-                    key=f"attachment_{selected_session}_{index}"
-                )
+            # Backward compatibility with responses created before multiple uploads.
+            if not attachments:
+                legacy_url = str(response.get("attachment_url", "")).strip()
+                legacy_name = str(response.get("attachment_name", "")).strip()
+                if legacy_url and not legacy_url.startswith("["):
+                    attachments = [{
+                        "name": legacy_name or "Attachment",
+                        "url": legacy_url,
+                        "type": str(response.get("attachment_type", "file"))
+                    }]
+
+            if attachments:
+                st.markdown("**📎 Attachments**")
+                for attachment_number, attachment in enumerate(attachments, start=1):
+                    attachment_url = str(attachment.get("url", "")).strip()
+                    attachment_name = str(attachment.get("name", "Attachment")).strip()
+                    attachment_type = str(attachment.get("type", "file")).strip().lower()
+
+                    if attachment_url:
+                        icon = {
+                            "image": "🖼️",
+                            "document": "📄",
+                            "video": "🎥"
+                        }.get(attachment_type, "📎")
+
+                        st.link_button(
+                            f"{icon} Open {attachment_name}",
+                            attachment_url,
+                            key=(
+                                f"attachment_{selected_session}_{index}_"
+                                f"{attachment_number}"
+                            )
+                        )
+
+
 
