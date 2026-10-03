@@ -556,8 +556,35 @@ if st.session_state.activity is None:
                         activity
                     )
                 )
+# =========================================================
+# LOAD ALL ACTIVITIES FROM GOOGLE
+# =========================================================
 
+def get_all_activities():
 
+    try:
+
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action": "get_activities"
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        return result
+
+    except Exception as error:
+
+        return {
+            "success": False,
+            "error": str(error),
+            "activities": []
+        }
             # ---------------------------------------------
             # GOOGLE SAVE SUCCESSFUL
             # ---------------------------------------------
