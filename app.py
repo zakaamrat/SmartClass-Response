@@ -17,7 +17,15 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-st.image("ibrahim44.gif", width=200)
+import base64
+
+with open("ibrahim44.gif", "rb") as f:
+    gif_data = base64.b64encode(f.read()).decode()
+
+st.markdown(
+    f'<img src="data:image/gif;base64,{gif_data}" width="200">',
+    unsafe_allow_html=True
+)
 
 # =========================================================
 # RESPONSIVE DESIGN
