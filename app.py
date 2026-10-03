@@ -17,7 +17,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-st.image("boumedyen1.png", width=150)
+st.image("boumedyen1.png", width=200)
 
 # =========================================================
 # RESPONSIVE DESIGN
