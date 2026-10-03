@@ -309,13 +309,14 @@ if st.session_state.activity is None:
 
         "Computer System Internals and Linux",
 
-        "Object-Oriented Programming Languages",
+        "Information Security Management",
 
         "Database Systems",
 
-        "Information Systems and Retrieval",
+        "Career Development",
 
         "Dependable Software Engineering",
+        "Final Year Project",
 
         "Other"
     ]
