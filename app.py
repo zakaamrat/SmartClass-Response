@@ -1,1653 +1,2713 @@
-// ======================================================
-
-// SMARTCLASS RESPONSE API
-
-// ======================================================
-
-
-
-const SPREADSHEET = SpreadsheetApp.getActiveSpreadsheet();
-
-
-
-const ACTIVITIES_SHEET = "Activities";
-
-const RESPONSES_SHEET = "Responses";
-const VOTES_SHEET = "Votes";
-
-
-
-// ======================================================
-
-// GOOGLE DRIVE ROOT FOLDER
-
-// ======================================================
-
-
-
-const ROOT_FOLDER_ID = "1yech9R7MMbMY9fIZM_FUrODiO8z62Ng1";
-
-
-
-// Upload limits (bytes)
-
-const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-
-const MAX_VIDEO_BYTES = 8 * 1024 * 1024;
-
-const MAX_TOTAL_UPLOAD_BYTES = 12 * 1024 * 1024;
-
-const MAX_ATTACHMENTS = 5;
-
-
-
-// ======================================================
-
-// GET REQUESTS
-
-// ======================================================
-
-
-
-function doGet(e) {
-
-  try {
-
-    const action = e.parameter.action;
-
-
-
-    if (action === "get_activity") {
-
-      const sessionId = e.parameter.session_id;
-
-      return jsonResponse(getActivity(sessionId));
-
-    }
-
-
-
-    if (action === "get_activities") {
-
-      return jsonResponse(getAllActivities());
-
-    }
-
-
-
-    if (action === "get_responses") {
-
-      const sessionId = e.parameter.session_id;
-
-      return jsonResponse(getResponses(sessionId));
-
-    }
-
-
-
-    return jsonResponse({
-
-      success: true,
-
-      message: "SmartClass API is running."
-
-    });
-
-
-
-  } catch (error) {
-
-    return jsonResponse({
-
-      success: false,
-
-      error: error.toString()
-
-    });
-
-  }
-
+import streamlit as st
+import qrcode
+import io
+import secrets
+import requests
+import base64
+from datetime import datetime
+
+
+# =========================================================
+# PAGE SETTINGS
+# =========================================================
+st.set_page_config(
+    page_title="SmartClass Response",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+import base64
+
+with open("ibrahim44.gif", "rb") as f:
+    gif_data = base64.b64encode(f.read()).decode()
+
+st.markdown(
+    f'''
+    <img src="data:image/gif;base64,{gif_data}"
+         style="width:100px; height:200px; object-fit:contain;">
+    ''',
+    unsafe_allow_html=True
+)
+
+
+# =========================================================
+# RESPONSIVE DESIGN
+# =========================================================
+
+st.markdown("""
+<style>
+
+.block-container {
+    max-width: 1200px;
+    padding-top: 2rem;
+    padding-bottom: 4rem;
 }
 
-
-
-// ======================================================
-
-// POST REQUESTS
-
-// ======================================================
-
-
-
-function doPost(e) {
-
-  try {
-
-    const data = JSON.parse(e.postData.contents);
-
-    const action = data.action;
-
-
-
-    if (action === "create_activity") {
-
-      return jsonResponse(createActivity(data));
-
-    }
-
-
-
-    if (action === "submit_response") {
-
-      return jsonResponse(submitResponse(data));
-
-    }
-
-
-
-    return jsonResponse({
-
-      success: false,
-
-      error: "Unknown action."
-
-    });
-
-
-
-  } catch (error) {
-
-    return jsonResponse({
-
-      success: false,
-
-      error: error.toString()
-
-    });
-
-  }
-
+.main-title {
+    font-size: clamp(2rem, 5vw, 3.5rem);
+    font-weight: 800;
+    text-align: center;
 }
 
-
-
-// ======================================================
-
-// CREATE ACTIVITY
-
-// ======================================================
-
-
-
-function createActivity(data) {
-
-  const sheet = SPREADSHEET.getSheetByName(ACTIVITIES_SHEET);
-
-
-
-  if (!sheet) {
-
-    throw new Error("Activities sheet was not found.");
-
-  }
-
-
-
-  const existing = findActivityRow(data.session_id);
-
-
-
-  if (existing !== -1) {
-
-    return {
-
-      success: false,
-
-      error: "Session ID already exists."
-
-    };
-
-  }
-
-
-
-  const folderInfo = createActivityFolders(
-
-    data.course,
-
-    data.semester,
-
-    data.session_id,
-
-    data.created_date
-
-  );
-
-
-
-  sheet.appendRow([
-
-    data.session_id,
-
-    data.course,
-
-    data.semester,
-
-    data.activity_title,
-
-    data.question,
-
-    data.instructions || "",
-
-    data.created_date,
-
-    data.created_time,
-
-    data.allow_email,
-
-    data.allow_document,
-
-    data.allow_image,
-
-    data.allow_video,
-
-    "Active",
-
-    "", // Instructor_File_Name
-
-    "", // Instructor_File_Type
-
-    "", // Instructor_File_URL
-
-    folderInfo.activityFolderUrl
-
-  ]);
-
-
-
-  return {
-
-    success: true,
-
-    message: "Activity created successfully.",
-
-    session_id: data.session_id,
-
-    folder_url: folderInfo.activityFolderUrl
-
-  };
-
+.subtitle {
+    text-align: center;
+    color: #667085;
+    font-size: 1.1rem;
+    margin-bottom: 30px;
 }
 
-
-
-// ======================================================
-
-// FIND ACTIVITY ROW
-
-// ======================================================
-
-
-
-function findActivityRow(sessionId) {
-
-  const sheet = SPREADSHEET.getSheetByName(ACTIVITIES_SHEET);
-
-
-
-  if (!sheet) {
-
-    return -1;
-
-  }
-
-
-
-  const values = sheet.getDataRange().getValues();
-
-
-
-  for (let i = 1; i < values.length; i++) {
-
-    if (
-
-      String(values[i][0]).trim() ===
-
-      String(sessionId).trim()
-
-    ) {
-
-      return i + 1;
-
-    }
-
-  }
-
-
-
-  return -1;
-
+.info-card {
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid #e6e8ec;
+    background: white;
+    margin-bottom: 15px;
 }
 
-
-
-// ======================================================
-
-// GET ONE ACTIVITY
-
-// ======================================================
-
-
-
-function getActivity(sessionId) {
-
-  if (!sessionId) {
-
-    return {
-
-      success: false,
-
-      error: "Session ID is required."
-
-    };
-
-  }
-
-
-
-  const sheet = SPREADSHEET.getSheetByName(ACTIVITIES_SHEET);
-
-
-
-  if (!sheet) {
-
-    return {
-
-      success: false,
-
-      error: "Activities sheet was not found."
-
-    };
-
-  }
-
-
-
-  const values = sheet.getDataRange().getValues();
-
-
-
-  for (let i = 1; i < values.length; i++) {
-
-    if (
-
-      String(values[i][0]).trim() ===
-
-      String(sessionId).trim()
-
-    ) {
-
-      return {
-
-        success: true,
-
-        activity: activityObjectFromRow(values[i])
-
-      };
-
-    }
-
-  }
-
-
-
-  return {
-
-    success: false,
-
-    error: "Activity/session was not found."
-
-  };
-
+.student-card {
+    padding: 22px;
+    border-radius: 18px;
+    border: 1px solid #e6e8ec;
+    background: white;
+    margin-bottom: 18px;
 }
 
-
-
-// ======================================================
-
-// GET ALL ACTIVITIES
-
-// ======================================================
-
-
-
-function getAllActivities() {
-
-  const sheet = SPREADSHEET.getSheetByName(ACTIVITIES_SHEET);
-
-
-
-  if (!sheet) {
-
-    return {
-
-      success: false,
-
-      error: "Activities sheet was not found."
-
-    };
-
-  }
-
-
-
-  const values = sheet.getDataRange().getValues();
-
-  const activities = [];
-
-
-
-  for (let i = 1; i < values.length; i++) {
-
-    if (!values[i][0]) {
-
-      continue;
-
-    }
-
-
-
-    activities.push(activityObjectFromRow(values[i]));
-
-  }
-
-
-
-  activities.reverse();
-
-
-
-  return {
-
-    success: true,
-
-    count: activities.length,
-
-    activities: activities
-
-  };
-
+.session-code {
+    font-size: 28px;
+    font-weight: 800;
+    text-align: center;
+    padding: 15px;
+    border-radius: 15px;
+    background: #f2f6ff;
 }
 
-
-
-function activityObjectFromRow(row) {
-
-  return {
-
-    session_id: row[0],
-
-    course: row[1],
-
-    semester: row[2],
-
-    activity_title: row[3],
-
-    question: row[4],
-
-    instructions: row[5],
-
-    created_date: row[6],
-
-    created_time: row[7],
-
-    allow_email: row[8],
-
-    allow_document: row[9],
-
-    allow_image: row[10],
-
-    allow_video: row[11],
-
-    status: row[12],
-
-    instructor_file_name: row[13],
-
-    instructor_file_type: row[14],
-
-    instructor_file_url: row[15],
-
-    drive_folder_url: row[16]
-
-  };
-
+.activity-count {
+    padding: 15px;
+    border-radius: 12px;
+    background: #f7f9fc;
+    margin-bottom: 20px;
 }
 
-
-
-// ======================================================
-
-// SUBMIT STUDENT RESPONSE + ATTACHMENTS
-
-// ======================================================
-
-
-
-function submitResponse(data) {
-
-  const responseSheet = SPREADSHEET.getSheetByName(RESPONSES_SHEET);
-
-
-
-  if (!responseSheet) {
-
-    throw new Error("Responses sheet was not found.");
-
-  }
-
-
-
-  const activityRowNumber = findActivityRow(data.session_id);
-
-
-
-  if (activityRowNumber === -1) {
-
-    return {
-
-      success: false,
-
-      error: "Invalid classroom session."
-
-    };
-
-  }
-
-
-
-  if (!data.answer || String(data.answer).trim() === "") {
-
-    return {
-
-      success: false,
-
-      error: "Student answer is required."
-
-    };
-
-  }
-
-
-
-  const activitySheet = SPREADSHEET.getSheetByName(ACTIVITIES_SHEET);
-
-  const activityRow = activitySheet
-
-    .getRange(activityRowNumber, 1, 1, 18)
-
-    .getValues()[0];
-
-
-
-  const activity = activityObjectFromRow(activityRow);
-
-
-
-  if (String(activity.status).trim().toLowerCase() !== "active") {
-
-    return {
-
-      success: false,
-
-      error: "This classroom activity is closed."
-
-    };
-
-  }
-
-
-
-  const attachments = Array.isArray(data.attachments)
-
-    ? data.attachments
-
-    : [];
-
-
-
-  const validation = validateAttachments(attachments, activity);
-
-
-
-  if (!validation.success) {
-
-    return validation;
-
-  }
-
-
-
-  const responseId = Utilities.getUuid();
-
-
-
-  // Save files only after every attachment has passed validation.
-
-  const savedAttachments = saveStudentAttachments(
-
-    attachments,
-
-    activity,
-
-    responseId
-
-  );
-
-
-
-  const attachmentTypes = savedAttachments.map(function(item) {
-
-    return item.type;
-
-  });
-
-
-
-  const attachmentNames = savedAttachments.map(function(item) {
-
-    return item.name;
-
-  });
-
-
-
-  const attachmentUrls = savedAttachments.map(function(item) {
-
-    return item.url;
-
-  });
-
-
-
-  // Existing three attachment columns are kept.
-
-  // For multiple files, each cell stores a JSON array.
-
-  responseSheet.appendRow([
-
-    responseId,
-
-    data.session_id,
-
-    data.submitted_date,
-
-    data.submitted_time,
-
-    data.student_email || "",
-
-    String(data.answer).trim(),
-
-    savedAttachments.length ? JSON.stringify(attachmentTypes) : "",
-
-    savedAttachments.length ? JSON.stringify(attachmentNames) : "",
-
-    savedAttachments.length ? JSON.stringify(attachmentUrls) : ""
-
-  ]);
-
-
-
-  return {
-
-    success: true,
-
-    message: "Response submitted successfully.",
-
-    response_id: responseId,
-
-    attachment_count: savedAttachments.length,
-
-    attachments: savedAttachments
-
-  };
-
+.student-question {
+    padding: 22px;
+    border-radius: 18px;
+    background: #f7f9fc;
+    border: 1px solid #e6e8ec;
+    margin-bottom: 20px;
 }
 
-
-
-// ======================================================
-
-// VALIDATE STUDENT ATTACHMENTS
-
-// ======================================================
-
-
-
-function validateAttachments(attachments, activity) {
-
-  if (attachments.length > MAX_ATTACHMENTS) {
-
-    return {
-
-      success: false,
-
-      error: "A maximum of " + MAX_ATTACHMENTS + " attachments is allowed."
-
-    };
-
-  }
-
-
-
-  let totalBytes = 0;
-
-
-
-  for (let i = 0; i < attachments.length; i++) {
-
-    const item = attachments[i] || {};
-
-    const category = String(item.category || "").toLowerCase().trim();
-
-    const fileName = String(item.name || "").trim();
-
-    const mimeType = String(item.mime_type || "application/octet-stream").trim();
-
-    const base64Data = String(item.base64 || "").trim();
-
-
-
-    if (!fileName || !base64Data) {
-
-      return {
-
-        success: false,
-
-        error: "One of the uploaded files is incomplete."
-
-      };
-
-    }
-
-
-
-    if (["document", "image", "video"].indexOf(category) === -1) {
-
-      return {
-
-        success: false,
-
-        error: "Unsupported attachment category."
-
-      };
-
-    }
-
-
-
-    if (category === "document" && !isTruthy(activity.allow_document)) {
-
-      return {
-
-        success: false,
-
-        error: "Document uploads are not enabled for this activity."
-
-      };
-
-    }
-
-
-
-    if (category === "image" && !isTruthy(activity.allow_image)) {
-
-      return {
-
-        success: false,
-
-        error: "Image uploads are not enabled for this activity."
-
-      };
-
-    }
-
-
-
-    if (category === "video" && !isTruthy(activity.allow_video)) {
-
-      return {
-
-        success: false,
-
-        error: "Video uploads are not enabled for this activity."
-
-      };
-
-    }
-
-
-
-    if (!isAllowedFile(category, fileName, mimeType)) {
-
-      return {
-
-        success: false,
-
-        error: "File type is not allowed: " + fileName
-
-      };
-
-    }
-
-
-
-    let bytes;
-
-
-
-    try {
-
-      bytes = Utilities.base64Decode(base64Data);
-
-    } catch (error) {
-
-      return {
-
-        success: false,
-
-        error: "Could not read uploaded file: " + fileName
-
-      };
-
-    }
-
-
-
-    const fileSize = bytes.length;
-
-    totalBytes += fileSize;
-
-
-
-    if (category === "document" && fileSize > MAX_DOCUMENT_BYTES) {
-
-      return {
-
-        success: false,
-
-        error: "Document is too large: " + fileName + ". Maximum size is 5 MB."
-
-      };
-
-    }
-
-
-
-    if (category === "image" && fileSize > MAX_IMAGE_BYTES) {
-
-      return {
-
-        success: false,
-
-        error: "Image is too large: " + fileName + ". Maximum size is 5 MB."
-
-      };
-
-    }
-
-
-
-    if (category === "video" && fileSize > MAX_VIDEO_BYTES) {
-
-      return {
-
-        success: false,
-
-        error: "Video is too large: " + fileName + ". Maximum size is 8 MB."
-
-      };
-
-    }
-
-  }
-
-
-
-  if (totalBytes > MAX_TOTAL_UPLOAD_BYTES) {
-
-    return {
-
-      success: false,
-
-      error: "The combined attachment size is too large. Maximum total size is 12 MB."
-
-    };
-
-  }
-
-
-
-  return {
-
-    success: true
-
-  };
-
+.stButton > button {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 12px;
+    font-weight: 700;
 }
 
+@media (max-width: 600px) {
 
+    .block-container {
+        padding: 1rem;
+    }
 
-function isAllowedFile(category, fileName, mimeType) {
-
-  const extension = getFileExtension(fileName);
-
-  const mime = String(mimeType || "").toLowerCase();
-
-
-
-  const documentExtensions = [
-
-    "pdf", "doc", "docx", "ppt", "pptx",
-
-    "xls", "xlsx", "txt", "csv"
-
-  ];
-
-
-
-  const imageExtensions = [
-
-    "jpg", "jpeg", "png", "webp"
-
-  ];
-
-
-
-  const videoExtensions = [
-
-    "mp4", "mov", "webm"
-
-  ];
-
-
-
-  if (category === "document") {
-
-    return documentExtensions.indexOf(extension) !== -1;
-
-  }
-
-
-
-  if (category === "image") {
-
-    return (
-
-      imageExtensions.indexOf(extension) !== -1 &&
-
-      (mime.indexOf("image/") === 0 || mime === "application/octet-stream")
-
-    );
-
-  }
-
-
-
-  if (category === "video") {
-
-    return (
-
-      videoExtensions.indexOf(extension) !== -1 &&
-
-      (mime.indexOf("video/") === 0 || mime === "application/octet-stream")
-
-    );
-
-  }
-
-
-
-  return false;
-
+    .info-card,
+    .student-card,
+    .student-question {
+        padding: 15px;
+    }
 }
 
+</style>
+""", unsafe_allow_html=True)
 
 
-function getFileExtension(fileName) {
+# =========================================================
+# SESSION STATE
+# =========================================================
 
-  const parts = String(fileName).toLowerCase().split(".");
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-  return parts.length > 1 ? parts.pop() : "";
+if "activity" not in st.session_state:
+    st.session_state.activity = None
 
-}
+if "student_submitted" not in st.session_state:
+    st.session_state.student_submitted = False
 
+if "student_submission_session" not in st.session_state:
+    st.session_state.student_submission_session = None
 
+if "voter_id" not in st.session_state:
+    st.session_state.voter_id = secrets.token_urlsafe(24)
 
-function isTruthy(value) {
+if "vote_submitted_for" not in st.session_state:
+    st.session_state.vote_submitted_for = None
 
-  return value === true || String(value).toLowerCase() === "true";
 
-}
+# =========================================================
+# GENERAL FUNCTIONS
+# =========================================================
 
+def create_session_code(length=6):
 
+    characters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-// ======================================================
+    return "".join(
+        secrets.choice(characters)
+        for _ in range(length)
+    )
 
-// SAVE STUDENT ATTACHMENTS TO GOOGLE DRIVE
 
-// ======================================================
+def create_qr(url):
 
+    qr = qrcode.QRCode(
+        version=1,
+        box_size=10,
+        border=4
+    )
 
+    qr.add_data(url)
+    qr.make(fit=True)
 
-function saveStudentAttachments(attachments, activity, responseId) {
+    image = qr.make_image(
+        fill_color="black",
+        back_color="white"
+    )
 
-  if (!attachments || attachments.length === 0) {
+    buffer = io.BytesIO()
 
-    return [];
+    image.save(
+        buffer,
+        format="PNG"
+    )
 
-  }
+    return buffer.getvalue()
 
 
+# =========================================================
+# GOOGLE — SAVE ACTIVITY
+# =========================================================
 
-  const activityFolder = getFolderFromUrl(activity.drive_folder_url);
+def save_activity_to_google(activity):
 
-  const studentUploadsFolder = getOrCreateFolder(
+    payload = {
 
-    activityFolder,
+        "action":
+            "create_activity",
 
-    "Student Uploads"
+        "session_id":
+            activity["session"],
 
-  );
+        "course":
+            activity["course"],
 
+        "semester":
+            activity["semester"],
 
+        "activity_title":
+            activity["activity_title"],
 
-  const saved = [];
+        "question":
+            activity["question"],
 
+        "instructions":
+            activity["instructions"],
 
+        "created_date":
+            activity["date"],
 
-  for (let i = 0; i < attachments.length; i++) {
+        "created_time":
+            activity["time"],
 
-    const item = attachments[i];
+        "allow_email":
+            activity["allow_email"],
 
-    const category = String(item.category).toLowerCase().trim();
+        "allow_document":
+            activity["allow_document"],
 
-    const originalName = cleanFileName(item.name);
+        "allow_image":
+            activity["allow_image"],
 
-    const mimeType = String(item.mime_type || "application/octet-stream");
+        "allow_video":
+            activity["allow_video"]
+    }
 
-    const bytes = Utilities.base64Decode(String(item.base64));
+    try:
 
+        response = requests.post(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            json=payload,
+            timeout=20
+        )
 
+        response.raise_for_status()
 
-    let folderName = "Documents";
+        return response.json()
 
+    except requests.exceptions.Timeout:
 
+        return {
+            "success": False,
+            "error": "Google connection timed out."
+        }
 
-    if (category === "image") {
+    except requests.exceptions.RequestException as error:
 
-      folderName = "Images";
+        return {
+            "success": False,
+            "error": f"Google connection error: {error}"
+        }
 
-    } else if (category === "video") {
+    except ValueError:
 
-      folderName = "Videos";
+        return {
+            "success": False,
+            "error": "Google returned an invalid response."
+        }
 
-    }
+    except Exception as error:
 
+        return {
+            "success": False,
+            "error": str(error)
+        }
 
 
-    const destinationFolder = getOrCreateFolder(
+# =========================================================
+# GOOGLE — GET ALL ACTIVITIES
+# =========================================================
 
-      studentUploadsFolder,
+def get_all_activities():
 
-      folderName
+    try:
 
-    );
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action": "get_activities"
+            },
+            timeout=20
+        )
 
+        response.raise_for_status()
 
+        return response.json()
 
-    const storedName = cleanFileName(
+    except requests.exceptions.Timeout:
 
-      responseId.substring(0, 8) + "_" + originalName
+        return {
+            "success": False,
+            "error": "Google connection timed out.",
+            "activities": []
+        }
 
-    );
+    except Exception as error:
 
+        return {
+            "success": False,
+            "error": str(error),
+            "activities": []
+        }
 
 
-    const blob = Utilities.newBlob(
+# =========================================================
+# GOOGLE — GET ONE ACTIVITY
+# =========================================================
 
-      bytes,
+def get_activity_from_google(session_id):
+
+    try:
 
-      mimeType,
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action": "get_activity",
+                "session_id": session_id
+            },
+            timeout=20
+        )
+
+        response.raise_for_status()
 
-      storedName
+        return response.json()
+
+    except requests.exceptions.Timeout:
+
+        return {
+            "success": False,
+            "error": "Google connection timed out."
+        }
 
-    );
+    except requests.exceptions.RequestException as error:
 
+        return {
+            "success": False,
+            "error": f"Google connection error: {error}"
+        }
+
+    except ValueError:
+
+        return {
+            "success": False,
+            "error": "Google returned an invalid response."
+        }
+
+    except Exception as error:
+
+        return {
+            "success": False,
+            "error": str(error)
+        }
+
+
+# =========================================================
+# GOOGLE — SUBMIT STUDENT RESPONSE
+# =========================================================
+
+def submit_student_response(
+    session_id,
+    student_email,
+    answer,
+    attachments=None
+):
+
+    now = datetime.now()
+    attachments = attachments or []
+
+    payload = {
+        "action": "submit_response",
+        "session_id": session_id,
+        "submitted_date": now.strftime("%d %B %Y"),
+        "submitted_time": now.strftime("%I:%M %p"),
+        "student_email": student_email.strip(),
+        "answer": answer.strip(),
+        "attachments": attachments
+    }
+
+    try:
+        # Base64 makes the JSON request larger than the original file bytes,
+        # so uploads are given a longer timeout than text-only responses.
+        response = requests.post(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            json=payload,
+            timeout=60
+        )
+        response.raise_for_status()
+        return response.json()
+
+    except requests.exceptions.Timeout:
+        return {
+            "success": False,
+            "error": "Submission timed out. Please try again with smaller files."
+        }
+    except requests.exceptions.RequestException as error:
+        return {
+            "success": False,
+            "error": f"Connection error: {error}"
+        }
+    except ValueError:
+        return {
+            "success": False,
+            "error": "Google returned an invalid response."
+        }
+    except Exception as error:
+        return {
+            "success": False,
+            "error": str(error)
+        }
+
+
+def uploaded_file_to_attachment(uploaded_file, category):
+    """Convert one Streamlit UploadedFile to the JSON format expected by Apps Script."""
+    file_bytes = uploaded_file.getvalue()
+    return {
+        "category": category,
+        "name": uploaded_file.name,
+        "mime_type": uploaded_file.type or "application/octet-stream",
+        "base64": base64.b64encode(file_bytes).decode("utf-8")
+    }
+
+
+def setting_enabled(value):
+    """Handle either real booleans or TRUE/FALSE values returned by Google Sheets."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes"}
+
+
+# =========================================================
+# GOOGLE — GET STUDENT RESPONSES
+# =========================================================
+
+def get_student_responses(session_id):
+    try:
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={
+                "action": "get_responses",
+                "session_id": session_id
+            },
+            timeout=20
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "Google connection timed out.", "responses": []}
+    except requests.exceptions.RequestException as error:
+        return {"success": False, "error": f"Google connection error: {error}", "responses": []}
+    except ValueError:
+        return {"success": False, "error": "Google returned an invalid response.", "responses": []}
+    except Exception as error:
+        return {"success": False, "error": str(error), "responses": []}
+
+
+# =========================================================
+# GOOGLE — VOTING
+# =========================================================
+
+def get_voting(session_id):
+    try:
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={"action": "get_voting", "session_id": session_id},
+            timeout=20
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as error:
+        return {"success": False, "error": str(error), "responses": []}
+
+
+def set_voting_status(session_id, status):
+    try:
+        response = requests.post(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            json={
+                "action": "set_voting_status",
+                "session_id": session_id,
+                "status": status
+            },
+            timeout=20
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as error:
+        return {"success": False, "error": str(error)}
+
+
+def submit_student_vote(session_id, response_id):
+    try:
+        response = requests.post(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            json={
+                "action": "submit_vote",
+                "session_id": session_id,
+                "response_id": response_id,
+                "voter_id": st.session_state.voter_id
+            },
+            timeout=20
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as error:
+        return {"success": False, "error": str(error)}
+
+
+def get_vote_results(session_id):
+    try:
+        response = requests.get(
+            st.secrets["GOOGLE_SCRIPT_URL"],
+            params={"action": "get_vote_results", "session_id": session_id},
+            timeout=20
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as error:
+        return {"success": False, "error": str(error), "results": []}
+
+
+# =========================================================
+# CHECK URL FOR STUDENT SESSION
+# =========================================================
+#
+# THIS MUST COME BEFORE INSTRUCTOR LOGIN.
+#
+# Example:
+#
+# https://your-app.streamlit.app/?session=ABC123
+#
+# =========================================================
+
+student_session_id = st.query_params.get("session")
+vote_session_id = st.query_params.get("vote")
+
+
+# =========================================================
+# STUDENT VOTING MODE
+# =========================================================
+
+if vote_session_id:
+    vote_session_id = str(vote_session_id).strip()
+
+    st.markdown(
+        """
+        <div class="main-title">🗳️ SmartClass Voting</div>
+        <div class="subtitle">Choose the best classroom answer</div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    with st.spinner("Loading answers for voting..."):
+        voting_result = get_voting(vote_session_id)
+
+    if not voting_result.get("success"):
+        st.warning(voting_result.get("error", "Voting is not available."))
+        st.stop()
+
+    st.subheader(voting_result.get("activity_title", "Classroom Activity"))
+    st.info(voting_result.get("question", ""))
+
+    responses_for_vote = voting_result.get("responses", [])
+
+    if not responses_for_vote:
+        st.info("There are no answers available for voting yet.")
+        st.stop()
+
+    if st.session_state.vote_submitted_for == vote_session_id:
+        st.success("✅ Your vote has been recorded. Thank you!")
+        st.info("You may now close this page.")
+        st.stop()
+
+    st.write("### 🏆 Vote for the best answer")
+    st.caption(
+        "Answers are shown anonymously. Select one answer and submit your vote. "
+        "Current vote counts are hidden while voting is open."
+    )
+
+    vote_options = {}
+    for number, item in enumerate(responses_for_vote, start=1):
+        label = f"Answer {number}"
+        vote_options[label] = item
+        with st.container(border=True):
+            st.markdown(f"**{label}**")
+            st.write(str(item.get("answer", "")).strip())
+
+    selected_vote_label = st.radio(
+        "Select the best answer",
+        list(vote_options.keys()),
+        index=None,
+        key=f"vote_choice_{vote_session_id}"
+    )
+
+    if st.button(
+        "👍 Submit My Vote",
+        type="primary",
+        use_container_width=True,
+        key=f"submit_vote_{vote_session_id}"
+    ):
+        if not selected_vote_label:
+            st.error("Please select one answer before submitting your vote.")
+        else:
+            selected_response_id = vote_options[selected_vote_label].get("response_id", "")
+            with st.spinner("Recording your vote..."):
+                vote_result = submit_student_vote(
+                    vote_session_id,
+                    selected_response_id
+                )
+
+            if vote_result.get("success"):
+                st.session_state.vote_submitted_for = vote_session_id
+                st.rerun()
+            else:
+                st.error(vote_result.get("error", "Your vote could not be recorded."))
+
+    st.stop()
+
+
+# =========================================================
+# STUDENT MODE
+# =========================================================
+
+if student_session_id:
+
+    student_session_id = str(
+        student_session_id
+    ).strip()
+
+
+    # Reset success state if another QR/session is opened
+
+    if (
+        st.session_state.student_submission_session
+        != student_session_id
+    ):
+
+        st.session_state.student_submitted = False
+
+        st.session_state.student_submission_session = (
+            student_session_id
+        )
+
+
+    # -----------------------------------------------------
+    # STUDENT HEADER
+    # -----------------------------------------------------
+
+    st.markdown(
+        """
+        <div class="main-title">
+            🎓 SmartClass Response
+        </div>
+
+        <div class="subtitle">
+            Classroom Discussion
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+    # -----------------------------------------------------
+    # LOAD ACTIVITY
+    # -----------------------------------------------------
+
+    with st.spinner(
+        "Loading classroom activity..."
+    ):
+
+        activity_result = (
+            get_activity_from_google(
+                student_session_id
+            )
+        )
+
+
+    # -----------------------------------------------------
+    # ACTIVITY NOT FOUND
+    # -----------------------------------------------------
+
+    if not activity_result.get("success"):
+
+        st.error(
+            "❌ This classroom activity could not be found."
+        )
+
+        st.write(
+            "Please scan the QR code again or ask your instructor."
+        )
+
+        with st.expander(
+            "Technical information"
+        ):
+
+            st.write(
+                activity_result.get(
+                    "error",
+                    "Unknown error."
+                )
+            )
+
+        st.stop()
+
+
+    student_activity = (
+        activity_result.get(
+            "activity",
+            {}
+        )
+    )
+
+
+    # -----------------------------------------------------
+    # CHECK STATUS
+    # -----------------------------------------------------
+
+    activity_status = str(
+        student_activity.get(
+            "status",
+            "Active"
+        )
+    ).strip()
+
+
+    if activity_status.lower() != "active":
+
+        st.warning(
+            "🔒 This classroom activity is currently closed."
+        )
+
+        st.write(
+            "Please contact your instructor if you believe "
+            "the activity should still be available."
+        )
+
+        st.stop()
+
+
+    # -----------------------------------------------------
+    # COURSE INFORMATION
+    # -----------------------------------------------------
+
+    st.header(
+        student_activity.get(
+            "activity_title",
+            "Classroom Activity"
+        )
+    )
+
+
+    st.markdown(
+        f"""
+        <div class="student-card">
+
+        <b>📚 Course</b><br>
+        {student_activity.get("course", "")}
+
+        <br><br>
+
+        <b>🎓 Semester</b><br>
+        {student_activity.get("semester", "")}
+
+        <br><br>
+
+        <b>🔑 Session</b><br>
+        {student_session_id}
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+    # -----------------------------------------------------
+    # QUESTION
+    # -----------------------------------------------------
 
+    st.subheader(
+        "💬 Discussion Question"
+    )
 
-    const driveFile = destinationFolder.createFile(blob);
 
+    st.info(
+        student_activity.get(
+            "question",
+            ""
+        )
+    )
 
 
-    saved.push({
+    # -----------------------------------------------------
+    # INSTRUCTIONS
+    # -----------------------------------------------------
 
-      type: category,
+    instructions = str(
+        student_activity.get(
+            "instructions",
+            ""
+        )
+    ).strip()
 
-      name: originalName,
 
-      stored_name: storedName,
+    if instructions:
 
-      mime_type: mimeType,
+        st.write(
+            "**📌 Instructions**"
+        )
 
-      url: driveFile.getUrl(),
+        st.write(
+            instructions
+        )
 
-      file_id: driveFile.getId()
 
-    });
+    st.divider()
 
-  }
 
+    # =====================================================
+    # SUBMISSION SUCCESS PAGE
+    # =====================================================
 
+    if st.session_state.student_submitted:
 
-  return saved;
+        st.success(
+            "✅ Your response has been submitted successfully!"
+        )
 
-}
+        st.markdown(
+            """
+            ### Thank you for participating
 
+            Your response has been received by your instructor.
+            """
+        )
 
+        st.info(
+            "You may now close this page."
+        )
 
-function getFolderFromUrl(folderUrl) {
+        st.stop()
 
-  const url = String(folderUrl || "").trim();
 
+    # =====================================================
+    # STUDENT RESPONSE FORM
+    # =====================================================
 
+    st.subheader(
+        "✍️ Your Response"
+    )
+
+
+    st.write(
+        "Write your response below and press "
+        "**Submit Response** when finished."
+    )
+
+
+    with st.form(
+        "student_response_form"
+    ):
 
-  if (!url) {
+
+        # -------------------------------------------------
+        # OPTIONAL EMAIL
+        # -------------------------------------------------
+
+        student_email = ""
 
-    throw new Error("Activity Google Drive folder was not found.");
 
-  }
+        allow_email = student_activity.get(
+            "allow_email",
+            False
+        )
 
 
+        if allow_email:
 
-  let match = url.match(/\\/folders\\/([a-zA-Z0-9_-]+)/);
+            student_email = st.text_input(
 
+                "Email (optional)",
 
+                placeholder=
+                    "You may leave this blank"
+            )
 
-  if (!match) {
 
-    match = url.match(/[-\w]{20,}/);
+            st.caption(
+                "Your email is optional and will only "
+                "be visible to the instructor."
+            )
 
-  }
 
+        # -------------------------------------------------
+        # ANSWER
+        # -------------------------------------------------
 
+        answer = st.text_area(
 
-  if (!match) {
+            "Your Answer",
 
-    throw new Error("Could not identify the activity Google Drive folder.");
+            placeholder=
+                "Write your answer, explanation or "
+                "classroom comment here...",
 
-  }
+            height=220
+        )
 
 
+        # -------------------------------------------------
+        # OPTIONAL ATTACHMENTS
+        # -------------------------------------------------
 
-  const folderId = match[1] || match[0];
+        allow_document = setting_enabled(
+            student_activity.get("allow_document", False)
+        )
+        allow_image = setting_enabled(
+            student_activity.get("allow_image", False)
+        )
+        allow_video = setting_enabled(
+            student_activity.get("allow_video", False)
+        )
 
-  return DriveApp.getFolderById(folderId);
+        document_files = []
+        image_files = []
+        video_files = []
 
-}
+        if allow_document or allow_image or allow_video:
+            st.markdown("**📎 Attachments (optional)**")
+            st.caption(
+                "You can attach up to 5 files in total. "
+                "Documents/images: max 5 MB each; short videos: max 8 MB; "
+                "combined maximum: 12 MB."
+            )
 
+        if allow_document:
+            document_files = st.file_uploader(
+                "📄 Upload Document",
+                type=["pdf", "doc", "docx", "ppt", "pptx",
+                      "xls", "xlsx", "txt", "csv"],
+                accept_multiple_files=True,
+                key=f"student_documents_{student_session_id}"
+            )
 
+        if allow_image:
+            image_files = st.file_uploader(
+                "🖼️ Upload Image",
+                type=["jpg", "jpeg", "png", "webp"],
+                accept_multiple_files=True,
+                key=f"student_images_{student_session_id}"
+            )
 
-function cleanFileName(name) {
+        if allow_video:
+            video_files = st.file_uploader(
+                "🎥 Upload Short Video",
+                type=["mp4", "mov", "webm"],
+                accept_multiple_files=True,
+                key=f"student_videos_{student_session_id}"
+            )
 
-  const cleaned = String(name || "file")
 
-    .replace(/[\\/\\\\:*?"<>|]/g, "-")
+        # -------------------------------------------------
+        # SUBMIT BUTTON
+        # -------------------------------------------------
 
-    .replace(/[\r\n\t]/g, " ")
+        student_submit = (
+            st.form_submit_button(
 
-    .trim();
+                "📤 Submit Response",
 
+                type="primary",
 
+                use_container_width=True
+            )
+        )
 
-  return cleaned || "file";
 
-}
+    # =====================================================
+    # PROCESS STUDENT SUBMISSION
+    # =====================================================
 
+    if student_submit:
 
 
-// ======================================================
+        if not answer.strip():
 
-// GET STUDENT RESPONSES FOR ONE ACTIVITY
+            st.error(
+                "Please write your answer before submitting."
+            )
 
-// ======================================================
 
+        else:
 
+            selected_files = (
+                [(f, "document") for f in document_files]
+                + [(f, "image") for f in image_files]
+                + [(f, "video") for f in video_files]
+            )
 
-function getResponses(sessionId) {
+            if len(selected_files) > 5:
+                st.error("Please upload a maximum of 5 attachments in total.")
+                st.stop()
 
-  if (!sessionId) {
+            attachments = []
+            total_bytes = 0
+            upload_error = None
 
-    return {
+            for uploaded_file, category in selected_files:
+                file_size = len(uploaded_file.getvalue())
+                total_bytes += file_size
 
-      success: false,
+                if category in {"document", "image"} and file_size > 5 * 1024 * 1024:
+                    upload_error = f"{uploaded_file.name} is larger than 5 MB."
+                    break
 
-      error: "Session ID is required.",
+                if category == "video" and file_size > 8 * 1024 * 1024:
+                    upload_error = f"{uploaded_file.name} is larger than 8 MB."
+                    break
 
-      responses: []
+                attachments.append(
+                    uploaded_file_to_attachment(uploaded_file, category)
+                )
 
-    };
+            if not upload_error and total_bytes > 12 * 1024 * 1024:
+                upload_error = "The combined attachment size is larger than 12 MB."
 
-  }
+            if upload_error:
+                st.error(upload_error)
+                st.stop()
 
+            with st.spinner(
+                "Uploading files and submitting your response..."
+                if attachments else
+                "Submitting your response..."
+            ):
 
+                submission_result = (
+                    submit_student_response(
+                        student_session_id,
+                        student_email,
+                        answer,
+                        attachments
+                    )
+                )
 
-  const activityRow = findActivityRow(sessionId);
 
+            if submission_result.get(
+                "success"
+            ):
 
+                st.session_state.student_submitted = True
 
-  if (activityRow === -1) {
+                st.rerun()
 
-    return {
 
-      success: false,
+            else:
 
-      error: "Activity/session was not found.",
+                st.error(
+                    "❌ Your response could not be submitted."
+                )
 
-      responses: []
+                st.error(
+                    submission_result.get(
+                        "error",
+                        "Unknown submission error."
+                    )
+                )
 
-    };
 
-  }
+    # =====================================================
+    # CRITICAL
+    # =====================================================
+    #
+    # STOP HERE.
+    #
+    # A STUDENT MUST NEVER CONTINUE TO THE
+    # INSTRUCTOR LOGIN SECTION.
+    #
+    # =====================================================
 
+    st.stop()
 
 
-  const sheet = SPREADSHEET.getSheetByName(RESPONSES_SHEET);
+# =========================================================
+# INSTRUCTOR MODE
+# =========================================================
+#
+# We reach this point ONLY when the URL does NOT contain
+# ?session=...
+#
+# =========================================================
 
 
+# =========================================================
+# HEADER
+# =========================================================
 
-  if (!sheet) {
+st.markdown(
+    """
+    <div class="main-title">
+        🎓 SmartClass Response
+    </div>
 
-    return {
+    <div class="subtitle">
+        Interactive Classroom Discussion System
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-      success: false,
 
-      error: "Responses sheet was not found.",
+# =========================================================
+# INSTRUCTOR LOGIN
+# =========================================================
 
-      responses: []
+if not st.session_state.authenticated:
 
-    };
+    left, middle, right = st.columns(
+        [1, 2, 1]
+    )
 
-  }
 
+    with middle:
 
+        st.subheader(
+            "👨‍🏫 Instructor Login"
+        )
 
-  const values = sheet.getDataRange().getValues();
+        st.write(
+            "Login to create and manage "
+            "classroom activities."
+        )
 
-  const responses = [];
 
+        password = st.text_input(
+            "Instructor Password",
+            type="password"
+        )
 
 
-  for (let i = 1; i < values.length; i++) {
+        if st.button(
+            "🔐 Login",
+            type="primary",
+            use_container_width=True
+        ):
 
-    const rowSessionId = String(values[i][1]).trim();
+            if (
+                password
+                == st.secrets[
+                    "INSTRUCTOR_PASSWORD"
+                ]
+            ):
 
+                st.session_state.authenticated = True
 
+                st.rerun()
 
-    if (rowSessionId === String(sessionId).trim()) {
 
-      responses.push({
+            else:
 
-        response_id: values[i][0],
+                st.error(
+                    "Incorrect instructor password."
+                )
 
-        session_id: values[i][1],
 
-        submitted_date: values[i][2],
+    st.stop()
 
-        submitted_time: values[i][3],
 
-        student_email: values[i][4],
+# =========================================================
+# INSTRUCTOR DASHBOARD HEADER
+# =========================================================
 
-        answer: values[i][5],
+top1, top2 = st.columns(
+    [5, 1]
+)
 
-        attachment_type: values[i][6],
 
-        attachment_name: values[i][7],
+with top1:
 
-        attachment_url: values[i][8],
+    st.subheader(
+        "👨‍🏫 Instructor Dashboard"
+    )
 
-        attachments: buildAttachmentObjects(
 
-          values[i][6],
+with top2:
 
-          values[i][7],
+    if st.button(
+        "Logout",
+        use_container_width=True
+    ):
 
-          values[i][8]
+        st.session_state.authenticated = False
 
-        )
+        st.session_state.activity = None
 
-      });
+        st.rerun()
 
-    }
 
-  }
+st.divider()
 
 
+# =========================================================
+# DASHBOARD NAVIGATION
+# =========================================================
 
-  responses.reverse();
+dashboard_page = st.radio(
 
+    "Instructor Menu",
 
+    [
+        "➕ Create Activity",
+        "📚 My Activities",
+        "📊 Student Responses"
+    ],
 
-  return {
+    horizontal=True,
 
-    success: true,
+    label_visibility="collapsed"
+)
 
-    count: responses.length,
 
-    responses: responses
+st.divider()
 
-  };
 
-}
+# =========================================================
+# PAGE 1 — CREATE ACTIVITY
+# =========================================================
 
+if dashboard_page == "➕ Create Activity":
 
 
-function buildAttachmentObjects(typeCell, nameCell, urlCell) {
+    # =====================================================
+    # NEW ACTIVITY FORM
+    # =====================================================
 
-  const types = parseStoredArray(typeCell);
+    if st.session_state.activity is None:
 
-  const names = parseStoredArray(nameCell);
+        st.header(
+            "➕ Create Classroom Activity"
+        )
 
-  const urls = parseStoredArray(urlCell);
 
+        st.write(
+            "Select the course and semester, "
+            "then enter your classroom question."
+        )
 
 
-  const count = Math.max(types.length, names.length, urls.length);
+        # -------------------------------------------------
+        # COURSE LIST
+        # -------------------------------------------------
 
-  const attachments = [];
+        courses = [
 
+            "Computer System Internals and Linux",
 
+            "Information Security Management",
 
-  for (let i = 0; i < count; i++) {
+            "Database Systems",
 
-    attachments.push({
+            "Career Development",
 
-      type: types[i] || "file",
+            "Dependable Software Engineering",
 
-      name: names[i] || "Attachment",
+            "Final Year Project",
 
-      url: urls[i] || ""
+            "Other"
+        ]
 
-    });
 
-  }
+        semesters = [
 
+            "Semester 1 - 2026/2027",
 
+            "Semester 2 - 2026/2027",
 
-  return attachments;
+            "Summer - 2026/2027"
+        ]
 
-}
 
+        # -------------------------------------------------
+        # ACTIVITY FORM
+        # -------------------------------------------------
 
+        with st.form(
+            "activity_form"
+        ):
 
-function parseStoredArray(value) {
 
-  if (value === null || value === undefined || String(value).trim() === "") {
+            col1, col2 = st.columns(2)
 
-    return [];
 
-  }
+            with col1:
 
+                course = st.selectbox(
+                    "Course",
+                    courses
+                )
 
 
-  const text = String(value).trim();
+            with col2:
 
+                semester = st.selectbox(
+                    "Semester",
+                    semesters
+                )
 
 
-  try {
+            # ---------------------------------------------
+            # CUSTOM COURSE
+            # ---------------------------------------------
 
-    const parsed = JSON.parse(text);
+            custom_course = ""
 
-    return Array.isArray(parsed) ? parsed : [text];
 
-  } catch (error) {
+            if course == "Other":
 
-    // Backward compatibility with any older single-file response.
+                custom_course = st.text_input(
+                    "Enter Course Title"
+                )
 
-    return [text];
 
-  }
+            # ---------------------------------------------
+            # ACTIVITY TITLE
+            # ---------------------------------------------
 
-}
+            activity_title = st.text_input(
 
+                "Activity Title",
 
+                placeholder=
+                    "Example: Linux Security Discussion"
+            )
 
 
-// ======================================================
-// STUDENT VOTING
-// ======================================================
+            # ---------------------------------------------
+            # QUESTION
+            # ---------------------------------------------
 
-function normalizeVotingStatus(value) {
-  const text = String(value || "").trim().toLowerCase();
-  if (text === "open") return "Open";
-  if (text === "closed") return "Closed";
-  return "Not Started";
-}
+            question = st.text_area(
 
-function setVotingStatus(data) {
-  const sessionId = String(data.session_id || "").trim();
-  const status = normalizeVotingStatus(data.status);
-  if (!sessionId) return {success:false,error:"Session ID is required."};
-  const row = findActivityRow(sessionId);
-  if (row === -1) return {success:false,error:"Activity/session was not found."};
-  SPREADSHEET.getSheetByName(ACTIVITIES_SHEET).getRange(row,18).setValue(status);
-  return {success:true,session_id:sessionId,voting_status:status,message:"Voting status updated successfully."};
-}
+                "Question / Discussion Task",
 
-function getVoting(sessionId) {
-  const a=getActivity(sessionId);
-  if (!a.success) return {success:false,error:a.error,responses:[]};
-  const status=normalizeVotingStatus(a.activity.voting_status);
-  if (status!=="Open") return {success:false,error:status==="Closed"?"Voting is closed.":"Voting has not started.",voting_status:status,responses:[]};
-  const r=getResponses(sessionId);
-  if (!r.success) return r;
-  const responses=r.responses.map(function(x){return {response_id:x.response_id,answer:x.answer};});
-  return {success:true,session_id:sessionId,activity_title:a.activity.activity_title,question:a.activity.question,voting_status:status,count:responses.length,responses:responses};
-}
+                placeholder=
+                    "Enter the question students "
+                    "should discuss...",
 
-function submitVote(data) {
-  const sid=String(data.session_id||"").trim(), rid=String(data.response_id||"").trim(), vid=String(data.voter_id||"").trim();
-  if (!sid||!rid||!vid) return {success:false,error:"Session ID, response ID and voter ID are required."};
-  const a=getActivity(sid);
-  if (!a.success) return {success:false,error:a.error};
-  if (normalizeVotingStatus(a.activity.voting_status)!=="Open") return {success:false,error:"Voting is not open for this activity."};
-  const r=getResponses(sid);
-  if (!r.success) return {success:false,error:r.error};
-  if (!r.responses.some(function(x){return String(x.response_id).trim()===rid;})) return {success:false,error:"The selected answer does not belong to this activity."};
-  const sheet=SPREADSHEET.getSheetByName(VOTES_SHEET);
-  if (!sheet) return {success:false,error:"Votes sheet was not found."};
-  const vals=sheet.getDataRange().getValues();
-  for(let i=1;i<vals.length;i++) if(String(vals[i][1]||"").trim()===sid && String(vals[i][3]||"").trim()===vid) return {success:false,error:"You have already voted in this activity."};
-  const id=Utilities.getUuid(), now=new Date(), tz=Session.getScriptTimeZone();
-  sheet.appendRow([id,sid,rid,vid,data.vote_date||Utilities.formatDate(now,tz,"dd MMMM yyyy"),data.vote_time||Utilities.formatDate(now,tz,"HH:mm:ss")]);
-  return {success:true,message:"Your vote has been recorded.",vote_id:id};
-}
+                height=160
+            )
 
-function getVoteResults(sessionId) {
-  const sid=String(sessionId||"").trim();
-  if(!sid) return {success:false,error:"Session ID is required.",results:[]};
-  const a=getActivity(sid), r=getResponses(sid);
-  if(!a.success) return {success:false,error:a.error,results:[]};
-  if(!r.success) return {success:false,error:r.error,results:[]};
-  const sheet=SPREADSHEET.getSheetByName(VOTES_SHEET);
-  if(!sheet) return {success:false,error:"Votes sheet was not found.",results:[]};
-  const counts={}, vals=sheet.getDataRange().getValues(); let total=0;
-  for(let i=1;i<vals.length;i++) if(String(vals[i][1]||"").trim()===sid){const id=String(vals[i][2]||"").trim();counts[id]=(counts[id]||0)+1;total++;}
-  const results=r.responses.map(function(x){return {response_id:x.response_id,answer:x.answer,votes:counts[String(x.response_id).trim()]||0};});
-  results.sort(function(a,b){return b.votes-a.votes;});
-  let prev=null,rank=0;
-  for(let i=0;i<results.length;i++){if(prev===null||results[i].votes<prev)rank=i+1;results[i].rank=rank;prev=results[i].votes;}
-  return {success:true,session_id:sid,voting_status:normalizeVotingStatus(a.activity.voting_status),total_votes:total,results:results};
-}
 
-// ======================================================
+            # ---------------------------------------------
+            # INSTRUCTIONS
+            # ---------------------------------------------
 
-// CREATE GOOGLE DRIVE STRUCTURE
+            instructions = st.text_area(
 
-// ======================================================
+                "Instructions (optional)",
 
+                placeholder=
+                    "Example: Explain your answer "
+                    "and give one example.",
 
+                height=90
+            )
 
-function createActivityFolders(course, semester, sessionId, date) {
 
-  const root = DriveApp.getFolderById(ROOT_FOLDER_ID);
+            st.markdown(
+                "#### Student Response Options"
+            )
 
 
+            option1, option2 = st.columns(2)
 
-  const courseFolder = getOrCreateFolder(
 
-    root,
+            with option1:
 
-    cleanFolderName(course)
+                allow_email = st.checkbox(
+                    "Optional student email",
+                    value=True
+                )
 
-  );
+                allow_document = st.checkbox(
+                    "Document upload",
+                    value=True
+                )
 
 
+            with option2:
 
-  const semesterFolder = getOrCreateFolder(
+                allow_image = st.checkbox(
+                    "Image upload",
+                    value=True
+                )
 
-    courseFolder,
+                allow_video = st.checkbox(
+                    "Short video upload",
+                    value=False
+                )
 
-    cleanFolderName(semester)
 
-  );
+            submitted = st.form_submit_button(
 
+                "🚀 Generate Activity & QR Code",
 
+                type="primary",
 
-  const activityFolderName = cleanFolderName(
+                use_container_width=True
+            )
 
-    date + "_" + sessionId
 
-  );
+        # =================================================
+        # PROCESS NEW ACTIVITY
+        # =================================================
 
+        if submitted:
 
 
-  const activityFolder = getOrCreateFolder(
+            selected_course = (
 
-    semesterFolder,
+                custom_course.strip()
 
-    activityFolderName
+                if course == "Other"
 
-  );
+                else course
+            )
 
 
+            # ---------------------------------------------
+            # VALIDATION
+            # ---------------------------------------------
 
-  getOrCreateFolder(
+            if not selected_course:
 
-    activityFolder,
+                st.error(
+                    "Please enter the course title."
+                )
 
-    "Instructor Files"
 
-  );
+            elif not activity_title.strip():
 
+                st.error(
+                    "Please enter an activity title."
+                )
 
 
-  const studentFolder = getOrCreateFolder(
+            elif not question.strip():
 
-    activityFolder,
+                st.error(
+                    "Please enter a question."
+                )
 
-    "Student Uploads"
 
-  );
+            else:
 
 
+                # -----------------------------------------
+                # DATE & TIME
+                # -----------------------------------------
 
-  getOrCreateFolder(studentFolder, "Images");
+                now = datetime.now()
 
-  getOrCreateFolder(studentFolder, "Documents");
 
-  getOrCreateFolder(studentFolder, "Videos");
+                # -----------------------------------------
+                # UNIQUE SESSION
+                # -----------------------------------------
 
+                session_code = (
+                    create_session_code()
+                )
 
 
-  return {
+                # -----------------------------------------
+                # STUDENT URL
+                # -----------------------------------------
 
-    activityFolderId: activityFolder.getId(),
+                app_url = (
+                    st.secrets["APP_URL"]
+                    .rstrip("/")
+                )
 
-    activityFolderUrl: activityFolder.getUrl()
 
-  };
+                student_url = (
 
-}
+                    f"{app_url}/"
+                    f"?session={session_code}"
+                )
 
 
+                # -----------------------------------------
+                # ACTIVITY DATA
+                # -----------------------------------------
 
-// ======================================================
+                activity = {
 
-// GET OR CREATE GOOGLE DRIVE FOLDER
+                    "course":
+                        selected_course,
 
-// ======================================================
+                    "semester":
+                        semester,
 
+                    "activity_title":
+                        activity_title.strip(),
 
+                    "question":
+                        question.strip(),
 
-function getOrCreateFolder(parent, folderName) {
+                    "instructions":
+                        instructions.strip(),
 
-  const folders = parent.getFoldersByName(folderName);
+                    "date":
+                        now.strftime(
+                            "%d %B %Y"
+                        ),
 
+                    "time":
+                        now.strftime(
+                            "%I:%M %p"
+                        ),
 
+                    "session":
+                        session_code,
 
-  if (folders.hasNext()) {
+                    "student_url":
+                        student_url,
 
-    return folders.next();
+                    "allow_email":
+                        allow_email,
 
-  }
+                    "allow_document":
+                        allow_document,
 
+                    "allow_image":
+                        allow_image,
 
+                    "allow_video":
+                        allow_video
+                }
 
-  return parent.createFolder(folderName);
 
-}
+                # -----------------------------------------
+                # SAVE TO GOOGLE
+                # -----------------------------------------
 
+                with st.spinner(
+                    "Creating activity and saving "
+                    "to Google Sheets and Drive..."
+                ):
 
+                    google_result = (
+                        save_activity_to_google(
+                            activity
+                        )
+                    )
 
-// ======================================================
 
-// CLEAN DRIVE FOLDER NAME
+                # -----------------------------------------
+                # SUCCESS
+                # -----------------------------------------
 
-// ======================================================
+                if google_result.get(
+                    "success"
+                ):
 
+                    activity[
+                        "drive_folder_url"
+                    ] = google_result.get(
+                        "folder_url",
+                        ""
+                    )
 
 
-function cleanFolderName(name) {
+                    st.session_state.activity = (
+                        activity
+                    )
 
-  return String(name)
 
-    .replace(/[\\/\\\\:*?"<>|]/g, "-")
+                    st.rerun()
 
-    .trim();
 
-}
+                # -----------------------------------------
+                # FAILURE
+                # -----------------------------------------
 
+                else:
 
+                    st.error(
+                        "❌ The activity could not "
+                        "be saved to Google."
+                    )
 
-// ======================================================
 
-// JSON RESPONSE
+                    st.error(
+                        google_result.get(
+                            "error",
+                            "Unknown Google error."
+                        )
+                    )
 
-// ======================================================
 
+    # =====================================================
+    # SHOW JUST-CREATED ACTIVITY
+    # =====================================================
 
+    else:
 
-function jsonResponse(data) {
+        activity = (
+            st.session_state.activity
+        )
 
-  return ContentService
 
-    .createTextOutput(JSON.stringify(data))
+        st.success(
+            "✅ Activity created and saved successfully!"
+        )
 
-    .setMimeType(ContentService.MimeType.JSON);
 
-}
+        left, right = st.columns(
+            [1.5, 1]
+        )
+
+
+        # -------------------------------------------------
+        # ACTIVITY INFORMATION
+        # -------------------------------------------------
+
+        with left:
+
+
+            st.header(
+                activity[
+                    "activity_title"
+                ]
+            )
+
+
+            st.markdown(
+                f"""
+                <div class="info-card">
+
+                <b>📚 Course</b><br>
+                {activity["course"]}
+
+                <br><br>
+
+                <b>🎓 Semester</b><br>
+                {activity["semester"]}
+
+                <br><br>
+
+                <b>📅 Date</b><br>
+                {activity["date"]}
+
+                <br><br>
+
+                <b>⏰ Time</b><br>
+                {activity["time"]}
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+            st.subheader(
+                "💬 Discussion Question"
+            )
+
+
+            st.info(
+                activity["question"]
+            )
+
+
+            if activity["instructions"]:
+
+                st.write(
+                    "**Instructions:**"
+                )
+
+                st.write(
+                    activity[
+                        "instructions"
+                    ]
+                )
+
+
+            if activity.get(
+                "drive_folder_url"
+            ):
+
+                st.success(
+                    "☁️ Google Drive activity "
+                    "folder created successfully."
+                )
+
+
+                st.link_button(
+                    "📁 Open Google Drive Folder",
+                    activity[
+                        "drive_folder_url"
+                    ]
+                )
+
+
+        # -------------------------------------------------
+        # QR CODE
+        # -------------------------------------------------
+
+        with right:
+
+
+            st.subheader(
+                "📱 Student Access"
+            )
+
+
+            st.write(
+                "Students scan this QR code "
+                "to answer this activity."
+            )
+
+
+            st.markdown(
+                f"""
+                <div class="session-code">
+                    {activity["session"]}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+            qr_image = create_qr(
+                activity[
+                    "student_url"
+                ]
+            )
+
+
+            st.image(
+                qr_image,
+                width=280
+            )
+
+
+            st.caption(
+                activity[
+                    "student_url"
+                ]
+            )
+
+
+            st.download_button(
+
+                "⬇️ Download QR Code",
+
+                data=qr_image,
+
+                file_name=
+                    f"{activity['session']}_QR.png",
+
+                mime="image/png",
+
+                use_container_width=True
+            )
+
+
+        # -------------------------------------------------
+        # RESPONSE SETTINGS
+        # -------------------------------------------------
+
+        st.divider()
+
+
+        st.subheader(
+            "⚙️ Activity Settings"
+        )
+
+
+        s1, s2, s3, s4 = (
+            st.columns(4)
+        )
+
+
+        s1.metric(
+            "Email",
+            "Optional"
+            if activity[
+                "allow_email"
+            ]
+            else "Disabled"
+        )
+
+
+        s2.metric(
+            "Documents",
+            "Allowed"
+            if activity[
+                "allow_document"
+            ]
+            else "Disabled"
+        )
+
+
+        s3.metric(
+            "Images",
+            "Allowed"
+            if activity[
+                "allow_image"
+            ]
+            else "Disabled"
+        )
+
+
+        s4.metric(
+            "Videos",
+            "Allowed"
+            if activity[
+                "allow_video"
+            ]
+            else "Disabled"
+        )
+
+
+        st.divider()
+
+
+        if st.button(
+            "➕ Create Another Activity",
+            type="primary"
+        ):
+
+            st.session_state.activity = None
+
+            st.rerun()
+
+
+# =========================================================
+# PAGE 2 — MY ACTIVITIES
+# =========================================================
+
+elif dashboard_page == "📚 My Activities":
+
+
+    st.header(
+        "📚 My Activities"
+    )
+
+
+    st.write(
+        "Find previous classroom activities, "
+        "display their QR codes and share "
+        "them with your students."
+    )
+
+
+    # -----------------------------------------------------
+    # LOAD GOOGLE DATA
+    # -----------------------------------------------------
+
+    with st.spinner(
+        "Loading activities from Google..."
+    ):
+
+        result = get_all_activities()
+
+
+    # -----------------------------------------------------
+    # LOAD ERROR
+    # -----------------------------------------------------
+
+    if not result.get(
+        "success"
+    ):
+
+        st.error(
+            "❌ Could not load activities."
+        )
+
+        st.error(
+            result.get(
+                "error",
+                "Unknown Google error."
+            )
+        )
+
+        st.stop()
+
+
+    activities = result.get(
+        "activities",
+        []
+    )
+
+
+    # -----------------------------------------------------
+    # NO ACTIVITIES
+    # -----------------------------------------------------
+
+    if not activities:
+
+        st.info(
+            "No activities have been created yet."
+        )
+
+        st.stop()
+
+
+    # =====================================================
+    # FILTERS
+    # =====================================================
+
+    st.subheader(
+        "🔎 Find an Activity"
+    )
+
+
+    course_names = sorted(
+
+        list(
+
+            set(
+
+                str(
+                    activity.get(
+                        "course",
+                        ""
+                    )
+                )
+
+                for activity
+                in activities
+
+                if activity.get(
+                    "course"
+                )
+            )
+        )
+    )
+
+
+    semester_names = sorted(
+
+        list(
+
+            set(
+
+                str(
+                    activity.get(
+                        "semester",
+                        ""
+                    )
+                )
+
+                for activity
+                in activities
+
+                if activity.get(
+                    "semester"
+                )
+            )
+        )
+    )
+
+
+    filter1, filter2 = (
+        st.columns(2)
+    )
+
+
+    with filter1:
+
+        selected_course_filter = (
+            st.selectbox(
+
+                "Course",
+
+                ["All Courses"]
+                + course_names
+            )
+        )
+
+
+    with filter2:
+
+        selected_semester_filter = (
+            st.selectbox(
+
+                "Semester",
+
+                ["All Semesters"]
+                + semester_names
+            )
+        )
+
+
+    search_text = st.text_input(
+
+        "Search",
+
+        placeholder=
+            "Search activity title, "
+            "question or session code..."
+    )
+
+
+    # =====================================================
+    # APPLY FILTERS
+    # =====================================================
+
+    filtered_activities = []
+
+
+    for item in activities:
+
+
+        course_match = (
+
+            selected_course_filter
+            == "All Courses"
+
+            or str(
+                item.get(
+                    "course",
+                    ""
+                )
+            )
+            == selected_course_filter
+        )
+
+
+        semester_match = (
+
+            selected_semester_filter
+            == "All Semesters"
+
+            or str(
+                item.get(
+                    "semester",
+                    ""
+                )
+            )
+            == selected_semester_filter
+        )
+
+
+        searchable_text = (
+
+            str(
+                item.get(
+                    "activity_title",
+                    ""
+                )
+            )
+
+            + " "
+
+            + str(
+                item.get(
+                    "question",
+                    ""
+                )
+            )
+
+            + " "
+
+            + str(
+                item.get(
+                    "session_id",
+                    ""
+                )
+            )
+
+        ).lower()
+
+
+        search_match = (
+
+            not search_text
+
+            or search_text.lower()
+            in searchable_text
+        )
+
+
+        if (
+            course_match
+            and semester_match
+            and search_match
+        ):
+
+            filtered_activities.append(
+                item
+            )
+
+
+    # =====================================================
+    # ACTIVITY COUNT
+    # =====================================================
+
+    st.markdown(
+        f"""
+        <div class="activity-count">
+
+        <b>
+        {len(filtered_activities)}
+        activity/activities found
+        </b>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+    # =====================================================
+    # DISPLAY ACTIVITIES
+    # =====================================================
+
+    if not filtered_activities:
+
+        st.warning(
+            "No activities match "
+            "the selected filters."
+        )
+
+
+    for item in filtered_activities:
+
+
+        title = str(
+            item.get(
+                "activity_title",
+                "Untitled Activity"
+            )
+        )
+
+
+        saved_session_id = str(
+            item.get(
+                "session_id",
+                ""
+            )
+        )
+
+
+        # -------------------------------------------------
+        # ACTIVITY EXPANDER
+        # -------------------------------------------------
+
+        with st.expander(
+            f"📘 {title} — {saved_session_id}"
+        ):
+
+
+            info1, info2, info3 = (
+                st.columns(3)
+            )
+
+
+            # ---------------------------------------------
+            # COURSE
+            # ---------------------------------------------
+
+            with info1:
+
+                st.write(
+                    "**📚 Course**"
+                )
+
+                st.write(
+                    item.get(
+                        "course",
+                        ""
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # SEMESTER
+            # ---------------------------------------------
+
+            with info2:
+
+                st.write(
+                    "**🎓 Semester**"
+                )
+
+                st.write(
+                    item.get(
+                        "semester",
+                        ""
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # DATE
+            # ---------------------------------------------
+
+            with info3:
+
+                st.write(
+                    "**📅 Date**"
+                )
+
+                st.write(
+                    item.get(
+                        "created_date",
+                        ""
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # QUESTION
+            # ---------------------------------------------
+
+            st.write(
+                "**💬 Question**"
+            )
+
+
+            st.info(
+                item.get(
+                    "question",
+                    ""
+                )
+            )
+
+
+            # ---------------------------------------------
+            # INSTRUCTIONS
+            # ---------------------------------------------
+
+            if item.get(
+                "instructions"
+            ):
+
+                st.write(
+                    "**Instructions:**"
+                )
+
+                st.write(
+                    item.get(
+                        "instructions"
+                    )
+                )
+
+
+            # ---------------------------------------------
+            # STATUS
+            # ---------------------------------------------
+
+            status = str(
+                item.get(
+                    "status",
+                    "Active"
+                )
+            )
+
+
+            st.write(
+                f"**Status:** {status}"
+            )
+
+
+            # ---------------------------------------------
+            # BUILD STUDENT URL
+            # ---------------------------------------------
+
+            app_url = (
+                st.secrets[
+                    "APP_URL"
+                ]
+                .rstrip("/")
+            )
+
+
+            student_url = (
+
+                f"{app_url}/"
+                f"?session={saved_session_id}"
+            )
+
+
+            # ---------------------------------------------
+            # GENERATE QR
+            # ---------------------------------------------
+
+            qr_image = create_qr(
+                student_url
+            )
+
+
+            qr_col, access_col = (
+                st.columns(
+                    [1, 2]
+                )
+            )
+
+
+            # ---------------------------------------------
+            # QR DISPLAY
+            # ---------------------------------------------
+
+            with qr_col:
+
+                st.image(
+                    qr_image,
+                    width=230
+                )
+
+
+            # ---------------------------------------------
+            # STUDENT ACCESS
+            # ---------------------------------------------
+
+            with access_col:
+
+
+                st.markdown(
+                    "### 📱 Student Access"
+                )
+
+
+                st.write(
+                    "**Session Code:**"
+                )
+
+
+                st.code(
+                    saved_session_id,
+                    language=None
+                )
+
+
+                st.text_input(
+
+                    "Student Link",
+
+                    value=
+                        student_url,
+
+                    key=
+                        f"url_{saved_session_id}"
+                )
+
+
+                st.download_button(
+
+                    "⬇️ Download QR Code",
+
+                    data=
+                        qr_image,
+
+                    file_name=
+                        f"{saved_session_id}_QR.png",
+
+                    mime=
+                        "image/png",
+
+                    key=
+                        f"download_{saved_session_id}",
+
+                    use_container_width=True
+                )
+
+
+                # -----------------------------------------
+                # GOOGLE DRIVE
+                # -----------------------------------------
+
+                drive_url = str(
+                    item.get(
+                        "drive_folder_url",
+                        ""
+                    )
+                )
+
+
+                if drive_url:
+
+                    st.link_button(
+
+                        "📁 Open Google Drive Folder",
+
+                        drive_url,
+
+                        use_container_width=True
+                    )
+
+# =========================================================
+# PAGE 3 — STUDENT RESPONSES
+# =========================================================
+
+elif dashboard_page == "📊 Student Responses":
+
+    st.header("📊 Student Responses")
+    st.write(
+        "Select an activity to view student answers directly inside SmartClass."
+    )
+
+    with st.spinner("Loading activities from Google..."):
+        activities_result = get_all_activities()
+
+    if not activities_result.get("success"):
+        st.error("❌ Could not load activities.")
+        st.error(activities_result.get("error", "Unknown Google error."))
+        st.stop()
+
+    activities = activities_result.get("activities", [])
+
+    if not activities:
+        st.info("No activities have been created yet.")
+        st.stop()
+
+    course_names = sorted({
+        str(item.get("course", "")).strip()
+        for item in activities
+        if str(item.get("course", "")).strip()
+    })
+
+    response_course = st.selectbox(
+        "Course",
+        course_names,
+        key="responses_course"
+    )
+
+    course_activities = [
+        item for item in activities
+        if str(item.get("course", "")).strip() == response_course
+    ]
+
+    semester_names = sorted({
+        str(item.get("semester", "")).strip()
+        for item in course_activities
+        if str(item.get("semester", "")).strip()
+    })
+
+    response_semester = st.selectbox(
+        "Semester",
+        semester_names,
+        key="responses_semester"
+    )
+
+    matching_activities = [
+        item for item in course_activities
+        if str(item.get("semester", "")).strip() == response_semester
+    ]
+
+    if not matching_activities:
+        st.info("No activities were found for this course and semester.")
+        st.stop()
+
+    activity_options = {}
+    for item in matching_activities:
+        session = str(item.get("session_id", "")).strip()
+        title = str(item.get("activity_title", "Untitled Activity")).strip()
+        date = str(item.get("created_date", "")).strip()
+        label = f"{title} — {date} — {session}"
+        activity_options[label] = item
+
+    selected_activity_label = st.selectbox(
+        "Activity",
+        list(activity_options.keys()),
+        key="responses_activity"
+    )
+
+    selected_activity = activity_options[selected_activity_label]
+    selected_session = str(selected_activity.get("session_id", "")).strip()
+
+    st.divider()
+    st.subheader(selected_activity.get("activity_title", "Classroom Activity"))
+    st.caption(
+        f"{selected_activity.get('course', '')} • "
+        f"{selected_activity.get('semester', '')} • "
+        f"Session {selected_session}"
+    )
+    st.info(selected_activity.get("question", ""))
+
+    # =====================================================
+    # STUDENT VOTING CONTROL
+    # =====================================================
+    st.subheader("🗳️ Student Voting")
+
+    voting_status = str(
+        selected_activity.get("voting_status", "Not Started") or "Not Started"
+    ).strip()
+
+    app_url = st.secrets["APP_URL"].rstrip("/")
+    voting_url = f"{app_url}/?vote={selected_session}"
+    voting_qr = create_qr(voting_url)
+
+    vote_status_col, vote_action_col = st.columns([1, 2])
+
+    with vote_status_col:
+        st.metric("Voting Status", voting_status)
+
+    with vote_action_col:
+        if voting_status.lower() != "open":
+            if st.button(
+                "🗳️ Open Student Voting",
+                type="primary",
+                use_container_width=True,
+                key=f"open_vote_{selected_session}"
+            ):
+                result = set_voting_status(selected_session, "Open")
+                if result.get("success"):
+                    st.success("Voting is now open.")
+                    st.rerun()
+                else:
+                    st.error(result.get("error", "Could not open voting."))
+        else:
+            if st.button(
+                "🔴 Close Voting",
+                use_container_width=True,
+                key=f"close_vote_{selected_session}"
+            ):
+                result = set_voting_status(selected_session, "Closed")
+                if result.get("success"):
+                    st.success("Voting is now closed.")
+                    st.rerun()
+                else:
+                    st.error(result.get("error", "Could not close voting."))
+
+    if voting_status.lower() == "open":
+        st.success("🟢 Voting is OPEN. Students can scan the QR code below.")
+        qr_col, link_col = st.columns([1, 2])
+
+        with qr_col:
+            st.image(voting_qr, width=230)
+
+        with link_col:
+            st.markdown("### 📱 Voting Access")
+            st.write("Students scan this QR code to vote anonymously.")
+            st.text_input(
+                "Voting Link",
+                value=voting_url,
+                key=f"voting_url_{selected_session}"
+            )
+            st.download_button(
+                "⬇️ Download Voting QR Code",
+                data=voting_qr,
+                file_name=f"{selected_session}_VOTING_QR.png",
+                mime="image/png",
+                key=f"download_voting_qr_{selected_session}",
+                use_container_width=True
+            )
+
+    if voting_status.lower() == "closed":
+        st.success("🏁 Voting is CLOSED. Final ranking is available below.")
+
+    if voting_status.lower() in {"open", "closed"}:
+        with st.spinner("Loading voting results..."):
+            vote_results = get_vote_results(selected_session)
+
+        if vote_results.get("success"):
+            total_votes = vote_results.get("total_votes", 0)
+            ranked = vote_results.get("results", [])
+            st.metric("Total Votes", total_votes)
+
+            if voting_status.lower() == "closed":
+                st.markdown("### 🏆 Final Ranking")
+                if not ranked:
+                    st.info("No voting results are available.")
+                else:
+                    for result_item in ranked:
+                        rank = result_item.get("rank", "")
+                        votes = result_item.get("votes", 0)
+                        answer = str(result_item.get("answer", "")).strip()
+                        medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else "🏅"
+                        with st.container(border=True):
+                            st.markdown(f"### {medal} Rank {rank} — {votes} vote(s)")
+                            st.write(answer)
+            else:
+                st.info(
+                    "Vote counts and ranking are hidden while voting is open. "
+                    "Close voting to reveal the final results."
+                )
+        else:
+            st.error(vote_results.get("error", "Could not load voting results."))
+
+    st.divider()
+
+    control1, control2 = st.columns([1, 2])
+    with control1:
+        refresh = st.button(
+            "🔄 Refresh Responses",
+            use_container_width=True
+        )
+    with control2:
+        presentation_mode = st.toggle(
+            "🎥 Presentation Mode — hide student emails",
+            value=False
+        )
+
+    # The button causes a normal Streamlit rerun, so responses are fetched fresh.
+    with st.spinner("Loading student responses..."):
+        responses_result = get_student_responses(selected_session)
+
+    if not responses_result.get("success"):
+        st.error("❌ Could not load student responses.")
+        st.error(responses_result.get("error", "Unknown Google error."))
+        st.stop()
+
+    responses = responses_result.get("responses", [])
+
+    total_responses = len(responses)
+    responses_with_email = sum(
+        1 for response in responses
+        if str(response.get("student_email", "")).strip()
+    )
+    responses_with_attachment = sum(
+        len(response.get("attachments", []) or [])
+        if response.get("attachments")
+        else (1 if str(response.get("attachment_url", "")).strip() else 0)
+        for response in responses
+    )
+
+    metric1, metric2, metric3 = st.columns(3)
+    metric1.metric("Total Responses", total_responses)
+    metric2.metric(
+        "With Email",
+        "Hidden" if presentation_mode else responses_with_email
+    )
+    metric3.metric("Attachments", responses_with_attachment)
+
+    st.divider()
+
+    if not responses:
+        st.info(
+            "No student responses have been submitted for this activity yet. "
+            "Use Refresh Responses after students submit their answers."
+        )
+        st.stop()
+
+    if presentation_mode:
+        st.success(
+            "🎥 Presentation Mode is active. Student emails are hidden."
+        )
+
+    for index, response in enumerate(responses, start=1):
+        with st.container(border=True):
+            heading_col, time_col = st.columns([3, 2])
+
+            with heading_col:
+                st.markdown(f"### 💬 Response {index}")
+
+            with time_col:
+                submitted_date = str(response.get("submitted_date", "")).strip()
+                submitted_time = str(response.get("submitted_time", "")).strip()
+                submitted_label = " • ".join(
+                    part for part in [submitted_date, submitted_time] if part
+                )
+                if submitted_label:
+                    st.caption(submitted_label)
+
+            if not presentation_mode:
+                student_email = str(response.get("student_email", "")).strip()
+                if student_email:
+                    st.write(f"**Student Email:** {student_email}")
+                else:
+                    st.caption("Student email: Not provided")
+
+            answer_text = str(response.get("answer", "")).strip()
+            st.write(answer_text if answer_text else "No written answer provided.")
+
+            attachments = response.get("attachments", []) or []
+
+            # Backward compatibility with responses created before multiple uploads.
+            if not attachments:
+                legacy_url = str(response.get("attachment_url", "")).strip()
+                legacy_name = str(response.get("attachment_name", "")).strip()
+                if legacy_url and not legacy_url.startswith("["):
+                    attachments = [{
+                        "name": legacy_name or "Attachment",
+                        "url": legacy_url,
+                        "type": str(response.get("attachment_type", "file"))
+                    }]
+
+            if attachments:
+                st.markdown("**📎 Attachments**")
+                for attachment_number, attachment in enumerate(attachments, start=1):
+                    attachment_url = str(attachment.get("url", "")).strip()
+                    attachment_name = str(attachment.get("name", "Attachment")).strip()
+                    attachment_type = str(attachment.get("type", "file")).strip().lower()
+
+                    if attachment_url:
+                        icon = {
+                            "image": "🖼️",
+                            "document": "📄",
+                            "video": "🎥"
+                        }.get(attachment_type, "📎")
+
+                        st.link_button(
+                            f"{icon} Open {attachment_name}",
+                            attachment_url,
+                            key=(
+                                f"attachment_{selected_session}_{index}_"
+                                f"{attachment_number}"
+                            )
+                        )
+
 
 
 
